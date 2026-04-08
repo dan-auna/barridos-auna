@@ -96,6 +96,37 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Product select preview
   document.getElementById("producto").addEventListener("change", updateProductChip);
+
+  // ── Restricciones en inputs numéricos ──
+  // Teléfono: solo dígitos, máximo 9
+  ["telefono", "edit-telefono"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.setAttribute("maxlength", "9");
+    el.setAttribute("inputmode", "numeric");
+    el.addEventListener("input", () => {
+      el.value = el.value.replace(/\D/g, "").slice(0, 9);
+    });
+    el.addEventListener("keydown", (e) => {
+      const allowed = ["Backspace","Delete","ArrowLeft","ArrowRight","Tab","Home","End"];
+      if (!allowed.includes(e.key) && !/^\d$/.test(e.key)) e.preventDefault();
+    });
+  });
+
+  // Edad: solo dígitos, máximo 3
+  ["edad", "edit-edad"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.setAttribute("maxlength", "3");
+    el.setAttribute("inputmode", "numeric");
+    el.addEventListener("input", () => {
+      el.value = el.value.replace(/\D/g, "").slice(0, 3);
+    });
+    el.addEventListener("keydown", (e) => {
+      const allowed = ["Backspace","Delete","ArrowLeft","ArrowRight","Tab","Home","End"];
+      if (!allowed.includes(e.key) && !/^\d$/.test(e.key)) e.preventDefault();
+    });
+  });
 });
 
 /* ══════════════════════════════════════════════
@@ -167,8 +198,8 @@ function validateForm() {
 
   const fields = [
     { id: "nombre",    errId: "err-nombre",   msg: "Ingresa el nombre completo",   check: (v) => v.trim().length >= 3 },
-    { id: "telefono",  errId: "err-telefono", msg: "Ingresa un teléfono válido",   check: (v) => /^\d{7,15}$/.test(v.replace(/\s/g, "")) },
-    { id: "edad",      errId: "err-edad",     msg: "Ingresa una edad válida (1–120)", check: (v) => +v >= 1 && +v <= 120 },
+    { id: "telefono",  errId: "err-telefono", msg: "El teléfono debe tener exactamente 9 dígitos", check: (v) => /^\d{9}$/.test(v.replace(/\s/g, "")) },
+    { id: "edad",      errId: "err-edad",     msg: "Ingresa una edad válida (1–120)",               check: (v) => /^\d+$/.test(v) && +v >= 1 && +v <= 120 },
     { id: "producto",  errId: "err-producto", msg: "Selecciona un producto",       check: (v) => v !== "" },
   ];
 
@@ -227,8 +258,8 @@ document.getElementById("barrido-form").addEventListener("submit", async functio
                    return `${get("month")}/${get("day")}/${get("year")} ${get("hour")}:${get("minute")} ${ampm}`;
                  })(),
     nombre:      document.getElementById("nombre").value.trim(),
-    telefono:    document.getElementById("telefono").value.trim(),
-    edad:        document.getElementById("edad").value,
+    telefono:    parseInt(document.getElementById("telefono").value.replace(/\s/g, ""), 10),
+    edad:        parseInt(document.getElementById("edad").value, 10),
     producto:    document.getElementById("producto").value,
     comentarios: document.getElementById("comentarios").value.trim(),
   };
@@ -481,8 +512,8 @@ function validateEditForm() {
   let valid = true;
   const fields = [
     { id: "edit-nombre",   errId: "edit-err-nombre",   msg: "Ingresa el nombre completo",      check: (v) => v.trim().length >= 3 },
-    { id: "edit-telefono", errId: "edit-err-telefono", msg: "Ingresa un teléfono válido",      check: (v) => /^\d{7,15}$/.test(v.replace(/\s/g, "")) },
-    { id: "edit-edad",     errId: "edit-err-edad",     msg: "Ingresa una edad válida (1–120)", check: (v) => +v >= 1 && +v <= 120 },
+    { id: "edit-telefono", errId: "edit-err-telefono", msg: "El teléfono debe tener exactamente 9 dígitos", check: (v) => /^\d{9}$/.test(v.replace(/\s/g, "")) },
+    { id: "edit-edad",     errId: "edit-err-edad",     msg: "Ingresa una edad válida (1–120)",               check: (v) => /^\d+$/.test(v) && +v >= 1 && +v <= 120 },
     { id: "edit-producto", errId: "edit-err-producto", msg: "Selecciona un producto",          check: (v) => v !== "" },
   ];
   fields.forEach(({ id, errId, msg, check }) => {
@@ -522,8 +553,8 @@ async function guardarEdicion() {
     agente:      lead.agente,
     fecha:       lead.fecha,     // no se modifica
     nombre:      document.getElementById("edit-nombre").value.trim(),
-    telefono:    document.getElementById("edit-telefono").value.trim(),
-    edad:        document.getElementById("edit-edad").value,
+    telefono:    parseInt(document.getElementById("edit-telefono").value.replace(/\s/g, ""), 10),
+    edad:        parseInt(document.getElementById("edit-edad").value, 10),
     producto:    document.getElementById("edit-producto").value,
     comentarios: document.getElementById("edit-comentarios").value.trim(),
   };

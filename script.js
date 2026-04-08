@@ -310,6 +310,24 @@ function showToast() {
 }
 
 /* ══════════════════════════════════════════════
+   NORMALIZAR CLAVES (elimina tildes de los headers)
+══════════════════════════════════════════════ */
+function normalizarClaves(obj) {
+  const resultado = {};
+  Object.keys(obj).forEach((key) => {
+    const keyNorm = key
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // elimina diacríticos (tildes)
+      .toLowerCase()
+      .trim();
+    resultado[keyNorm] = obj[key];
+  });
+  // Preservar _rowIndex sin modificar
+  if (obj._rowIndex !== undefined) resultado._rowIndex = obj._rowIndex;
+  return resultado;
+}
+
+/* ══════════════════════════════════════════════
    VER REGISTROS
 ══════════════════════════════════════════════ */
 async function verRegistros() {
@@ -332,8 +350,8 @@ async function verRegistros() {
     const todosLosLeads = await response.json();
 
     allLeads = rol === "Administrador"
-      ? todosLosLeads
-      : todosLosLeads.filter((l) => l.usuario === miUser);
+      ? todosLosLeads.map(normalizarClaves)
+      : todosLosLeads.filter((l) => l.usuario === miUser).map(normalizarClaves);
 
     document.getElementById("records-sub").textContent =
       `${allLeads.length} lead${allLeads.length !== 1 ? "s" : ""} encontrado${allLeads.length !== 1 ? "s" : ""}`;
@@ -436,9 +454,9 @@ function renderTable(datos, contenedor) {
     html += `
       <tr class="row-clickable" onclick="abrirEditModal(${globalIdx})" title="Clic para editar este lead">
         <td style="white-space:nowrap; color:var(--slate-500); font-size:0.8rem">${formatFecha(d.fecha)}</td>
-        <td style="font-weight:600">${d.nombre || "—"}</td>
-        <td>${d.telefono || "—"}</td>
-        <td style="text-align:center">${d.edad || "—"}</td>
+        <td style="font-weight:600">${d.nombre || d["nombre"] || "—"}</td>
+        <td>${String(d.telefono ?? d["teléfono"] ?? "").trim() || "—"}</td>
+        <td style="text-align:center">${d.edad ?? d["edad"] ?? "—"}</td>
         <td><span class="badge-product ${badgeClass}">${d.producto || "—"}</span></td>
         ${mostrarAsesor ? `<td style="color:var(--slate-500); font-size:0.82rem">${d.agente || d.usuario || "—"}</td>` : ""}
         <td style="color:var(--slate-500); font-size:0.82rem; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="${d.comentarios || ""}">${d.comentarios || "—"}</td>
@@ -467,8 +485,8 @@ function abrirEditModal(idx) {
 
   // Rellenar campos
   document.getElementById("edit-nombre").value      = lead.nombre      || "";
-  document.getElementById("edit-telefono").value    = lead.telefono    || "";
-  document.getElementById("edit-edad").value        = lead.edad        || "";
+  document.getElementById("edit-telefono").value    = String(lead.telefono ?? lead["teléfono"] ?? "");
+  document.getElementById("edit-edad").value        = lead.edad        ?? "";
   document.getElementById("edit-producto").value    = lead.producto    || "";
   document.getElementById("edit-comentarios").value = lead.comentarios || "";
 

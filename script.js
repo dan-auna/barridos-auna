@@ -3,7 +3,7 @@
    ══════════════════════════════════════════════ */
 
 const URL_GOOGLE_SCRIPT =
-  "https://script.google.com/macros/s/AKfycbzg3p6evPFrvfWIAwa6MoGMEtuoyBLU2-wWapn-Ic4lYY9fzuVzrT-zAaOg18XoxvKBaA/exec";
+  "https://script.google.com/macros/s/AKfycbw2RCv8T8Clj1NGVKL9q7p34AL5fVkHSpBB-1QncSoeeeoMZ5OEsceUnhz6vLie8H9v/exec";
 
 // ─── Todos los leads (cache para búsqueda) ───
 let allLeads = [];

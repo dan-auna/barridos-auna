@@ -6,7 +6,9 @@ const URL_GOOGLE_SCRIPT =
   "https://script.google.com/macros/s/AKfycbw2RCv8T8Clj1NGVKL9q7p34AL5fVkHSpBB-1QncSoeeeoMZ5OEsceUnhz6vLie8H9v/exec";
 
 // ─── Todos los leads (cache para búsqueda) ───
-let allLeads = [];
+let allLeads    = [];
+let currentPage = 1;
+const PAGE_SIZE = 20;
 
 /* ══════════════════════════════════════════════
    SHOW / HIDE PASSWORD
@@ -171,7 +173,8 @@ function switchTab(tab) {
   document.getElementById(`tab-${tab}`).classList.add("active");
   document.getElementById(`panel-${tab}`).classList.add("active");
 
-  if (tab === "records") verRegistros();
+  if (tab === "records")  verRegistros();
+  if (tab === "encuesta") iniciarEncuesta();
 }
 
 /* ══════════════════════════════════════════════
@@ -353,6 +356,20 @@ async function verRegistros() {
       ? todosLosLeads.map(normalizarClaves)
       : todosLosLeads.filter((l) => l.usuario === miUser).map(normalizarClaves);
 
+    // Ordenar de más nuevo a más antiguo
+    allLeads.sort((a, b) => {
+      const da = new Date(a.fecha);
+      const db = new Date(b.fecha);
+      // Fechas válidas: comparar numéricamente
+      if (!isNaN(da) && !isNaN(db)) return db - da;
+      // Si alguna no parsea, las ponemos al final
+      if (isNaN(da)) return 1;
+      if (isNaN(db)) return -1;
+      return 0;
+    });
+
+    currentPage = 1;
+
     document.getElementById("records-sub").textContent =
       `${allLeads.length} lead${allLeads.length !== 1 ? "s" : ""} encontrado${allLeads.length !== 1 ? "s" : ""}`;
 
@@ -381,6 +398,7 @@ function filtrarTabla() {
       (l.telefono  || "").toString().includes(q)     ||
       (l.agente    || l.usuario || "").toLowerCase().includes(q)
   );
+  currentPage = 1;
   renderTable(filtrados, document.getElementById("tabla-registros"));
 }
 
@@ -427,8 +445,17 @@ function renderTable(datos, contenedor) {
     return;
   }
 
-  const rol = sessionStorage.getItem("rolActivo");
+  const rol           = sessionStorage.getItem("rolActivo");
   const mostrarAsesor = rol === "Administrador";
+  const totalPages    = Math.ceil(datos.length / PAGE_SIZE);
+
+  // Clamp currentPage
+  if (currentPage < 1)           currentPage = 1;
+  if (currentPage > totalPages)  currentPage = totalPages;
+
+  const start    = (currentPage - 1) * PAGE_SIZE;
+  const end      = Math.min(start + PAGE_SIZE, datos.length);
+  const pagSlice = datos.slice(start, end);
 
   let html = `
     <div style="overflow-x:auto">
@@ -447,10 +474,9 @@ function renderTable(datos, contenedor) {
       </thead>
       <tbody>`;
 
-  datos.forEach((d, i) => {
+  pagSlice.forEach((d) => {
     const badgeClass = getBadgeClass(d.producto);
-    // guardamos el índice global en allLeads para poder editar
-    const globalIdx = allLeads.indexOf(d);
+    const globalIdx  = allLeads.indexOf(d);
     html += `
       <tr class="row-clickable" onclick="abrirEditModal(${globalIdx})" title="Clic para editar este lead">
         <td style="white-space:nowrap; color:var(--slate-500); font-size:0.8rem">${formatFecha(d.fecha)}</td>
@@ -464,13 +490,63 @@ function renderTable(datos, contenedor) {
       </tr>`;
   });
 
-  html += `
-      </tbody>
-    </table>
-    </div>
-    <div class="table-footer">${datos.length} registro${datos.length !== 1 ? "s" : ""}</div>`;
+  html += `</tbody></table></div>`;
+
+  // ── Footer con paginación ──
+  html += `<div class="table-footer">`;
+
+  if (totalPages > 1) {
+    html += `<div class="pagination">`;
+
+    // Botón anterior
+    html += `<button class="pag-btn" onclick="cambiarPagina(${currentPage - 1}, ${JSON.stringify(datos).replace(/"/g, '&quot;')})" ${currentPage === 1 ? "disabled" : ""}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>`;
+
+    // Números de página
+    const range = paginationRange(currentPage, totalPages);
+    range.forEach((item) => {
+      if (item === "…") {
+        html += `<span class="pag-ellipsis">…</span>`;
+      } else {
+        html += `<button class="pag-btn pag-num ${item === currentPage ? "active" : ""}" onclick="cambiarPagina(${item}, ${JSON.stringify(datos).replace(/"/g, '&quot;')})">${item}</button>`;
+      }
+    });
+
+    // Botón siguiente
+    html += `<button class="pag-btn" onclick="cambiarPagina(${currentPage + 1}, ${JSON.stringify(datos).replace(/"/g, '&quot;')})" ${currentPage === totalPages ? "disabled" : ""}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>`;
+
+    html += `</div>`; // /pagination
+  }
+
+  html += `<span class="footer-count">Mostrando ${start + 1}–${end} de ${datos.length} registro${datos.length !== 1 ? "s" : ""}</span>`;
+  html += `</div>`; // /table-footer
 
   contenedor.innerHTML = html;
+}
+
+// ── Rango de páginas con elipsis ──
+function paginationRange(current, total) {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages = [];
+  if (current <= 4) {
+    pages.push(1, 2, 3, 4, 5, "…", total);
+  } else if (current >= total - 3) {
+    pages.push(1, "…", total - 4, total - 3, total - 2, total - 1, total);
+  } else {
+    pages.push(1, "…", current - 1, current, current + 1, "…", total);
+  }
+  return pages;
+}
+
+// ── Cambiar página ──
+function cambiarPagina(page, datos) {
+  currentPage = page;
+  renderTable(datos, document.getElementById("tabla-registros"));
+  // Scroll suave al inicio de la tabla
+  document.getElementById("tabla-registros").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 /* ══════════════════════════════════════════════
@@ -616,3 +692,91 @@ function showToastEdit() {
     toast.style.animation = "";
   }, 3500);
 }
+
+/* ══════════════════════════════════════════════
+   ENCUESTA — QR Y LINK PERSONALIZADO
+══════════════════════════════════════════════ */
+let qrInstance = null;
+
+function iniciarEncuesta() {
+  const usuario = sessionStorage.getItem("usuarioActivo") || "asesor";
+  // La URL de la encuesta pública con el usuario codificado como parámetro
+  const baseUrl = window.location.href.replace(/\/[^/]*$/, "") + "/encuesta.html";
+  const encuestaUrl = `${baseUrl}?u=${encodeURIComponent(usuario)}`;
+
+  // Mostrar el link
+  document.getElementById("encuesta-link-text").textContent = encuestaUrl;
+
+  // Generar QR solo una vez o si el usuario cambió
+  const container = document.getElementById("qr-container");
+  if (container.dataset.generatedFor === usuario) return; // ya generado
+  container.dataset.generatedFor = usuario;
+  container.innerHTML = ""; // limpiar
+
+  const LOGO_URL = "https://res.cloudinary.com/dwxiuavqd/image/upload/v1774998253/468951353_1098106335437147_8489372296479282912_n_insezr.jpg";
+  const QR_SIZE  = 240;
+
+  qrInstance = new QRCode(container, {
+    text:          encuestaUrl,
+    width:         QR_SIZE,
+    height:        QR_SIZE,
+    colorDark:     "#002d72",
+    colorLight:    "#ffffff",
+    correctLevel:  QRCode.CorrectLevel.H, // nivel H para poder superponer logo
+  });
+
+  // Superponer logo Auna en el centro del QR
+  setTimeout(() => {
+    const canvas = container.querySelector("canvas");
+    if (!canvas) return;
+
+    const ctx    = canvas.getContext("2d");
+    const logo   = new Image();
+    logo.crossOrigin = "anonymous";
+    logo.onload = () => {
+      const logoSize   = QR_SIZE * 0.22;
+      const logoX      = (QR_SIZE - logoSize) / 2;
+      const logoY      = (QR_SIZE - logoSize) / 2;
+      const padding    = 6;
+      const radius     = 8;
+
+      // Fondo blanco redondeado para el logo
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.roundRect(logoX - padding, logoY - padding, logoSize + padding * 2, logoSize + padding * 2, radius);
+      ctx.fill();
+
+      // Logo
+      ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
+    };
+    logo.src = LOGO_URL;
+  }, 200);
+}
+
+function copiarLink() {
+  const link = document.getElementById("encuesta-link-text").textContent;
+  navigator.clipboard.writeText(link).then(() => {
+    const btn  = document.getElementById("btn-copy");
+    const icon = document.getElementById("copy-icon");
+    icon.innerHTML = `<polyline points="20 6 9 17 4 12"/>`;
+    btn.style.background = "var(--green-500)";
+    btn.style.color = "white";
+    setTimeout(() => {
+      icon.innerHTML = `<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>`;
+      btn.style.background = "";
+      btn.style.color = "";
+    }, 2000);
+  });
+}
+
+function descargarQR() {
+  const canvas = document.querySelector("#qr-container canvas");
+  if (!canvas) return;
+
+  const usuario = sessionStorage.getItem("usuarioActivo") || "asesor";
+  const link    = document.createElement("a");
+  link.download = `QR_Encuesta_${usuario}.png`;
+  link.href     = canvas.toDataURL("image/png");
+  link.click();
+}
+

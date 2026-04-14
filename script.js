@@ -11,6 +11,63 @@ let currentPage = 1;
 const PAGE_SIZE = 20;
 
 /* ══════════════════════════════════════════════
+   SESIÓN — localStorage con expiración 15 min
+══════════════════════════════════════════════ */
+const SESSION_KEY     = "auna_session";
+const SESSION_MINUTES = 15;
+
+function guardarSesion(usuario, rol, agente) {
+  const sesion = {
+    usuario,
+    rol,
+    agente,
+    expira: Date.now() + SESSION_MINUTES * 60 * 1000,
+  };
+  localStorage.setItem(SESSION_KEY, JSON.stringify(sesion));
+}
+
+function leerSesion() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const sesion = JSON.parse(raw);
+    if (Date.now() > sesion.expira) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    // Renovar los 15 minutos con cada actividad
+    sesion.expira = Date.now() + SESSION_MINUTES * 60 * 1000;
+    localStorage.setItem(SESSION_KEY, JSON.stringify(sesion));
+    return sesion;
+  } catch {
+    localStorage.removeItem(SESSION_KEY);
+    return null;
+  }
+}
+
+function borrarSesion() {
+  localStorage.removeItem(SESSION_KEY);
+}
+
+// Verificar sesión al cargar la página
+(function verificarSesionAlCargar() {
+  const sesion = leerSesion();
+  if (sesion) {
+    // Restaurar la UI directamente sin pedir login
+    mostrarPantallaFormulario({
+      usuario: sesion.usuario,
+      rol:     sesion.rol,
+      agente:  sesion.agente,
+    });
+  }
+})();
+
+// Renovar expiración con cualquier interacción del usuario
+document.addEventListener("click",    () => leerSesion());
+document.addEventListener("keydown",  () => leerSesion());
+document.addEventListener("touchstart", () => leerSesion());
+
+/* ══════════════════════════════════════════════
    SHOW / HIDE PASSWORD
 ══════════════════════════════════════════════ */
 function togglePass() {
@@ -54,9 +111,7 @@ async function login() {
     );
 
     if (encontrado) {
-      sessionStorage.setItem("usuarioActivo", encontrado.usuario);
-      sessionStorage.setItem("rolActivo",     encontrado.rol);
-      sessionStorage.setItem("agenteActivo",  encontrado.agente);
+      guardarSesion(encontrado.usuario, encontrado.rol, encontrado.agente);
       mostrarPantallaFormulario(encontrado);
     } else {
       showLoginError();
@@ -96,8 +151,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.key === "Enter") document.getElementById("password").focus();
   });
 
-  // Product select preview
-  document.getElementById("producto").addEventListener("change", updateProductChip);
+  // Product select preview — removed (product field no longer exists)
 
   // ── Restricciones en inputs numéricos ──
   // Teléfono: solo dígitos, máximo 9
@@ -153,7 +207,7 @@ function mostrarPantallaFormulario(user) {
    LOGOUT
 ══════════════════════════════════════════════ */
 function logout() {
-  sessionStorage.clear();
+  borrarSesion();
   document.getElementById("form-section").style.display  = "none";
   document.getElementById("login-section").style.display = "block";
   document.getElementById("username").value = "";
@@ -178,40 +232,23 @@ function switchTab(tab) {
 }
 
 /* ══════════════════════════════════════════════
-   PRODUCT CHIP PREVIEW
-══════════════════════════════════════════════ */
-function updateProductChip() {
-  const val     = document.getElementById("producto").value;
-  const preview = document.getElementById("product-preview");
-  const chip    = document.getElementById("product-chip-display");
-
-  if (val) {
-    preview.style.display = "block";
-    chip.textContent = `✔ ${val} seleccionado`;
-  } else {
-    preview.style.display = "none";
-  }
-}
-
-/* ══════════════════════════════════════════════
    VALIDACIÓN
 ══════════════════════════════════════════════ */
 function validateForm() {
   let valid = true;
 
   const fields = [
-    { id: "nombre",    errId: "err-nombre",   msg: "Ingresa el nombre completo",   check: (v) => v.trim().length >= 3 },
-    { id: "telefono",  errId: "err-telefono", msg: "El teléfono debe tener exactamente 9 dígitos", check: (v) => /^\d{9}$/.test(v.replace(/\s/g, "")) },
-    { id: "edad",      errId: "err-edad",     msg: "Ingresa una edad válida (1–120)",               check: (v) => /^\d+$/.test(v) && +v >= 1 && +v <= 120 },
-    { id: "producto",  errId: "err-producto", msg: "Selecciona un producto",       check: (v) => v !== "" },
+    { id: "nombre",      errId: "err-nombre",      msg: "Ingresa el nombre completo",                   check: (v) => v.trim().length >= 3 },
+    { id: "telefono",    errId: "err-telefono",    msg: "El teléfono debe tener exactamente 9 dígitos", check: (v) => /^\d{9}$/.test(v.replace(/\s/g, "")) },
+    { id: "edad",        errId: "err-edad",        msg: "Ingresa una edad válida (1–120)",               check: (v) => /^\d+$/.test(v) && +v >= 1 && +v <= 120 },
+    { id: "producto",    errId: "err-producto",    msg: "Selecciona un producto",                       check: (v) => v !== "" },
+    { id: "temperatura", errId: "err-temperatura", msg: "Selecciona la temperatura del lead",           check: (v) => v !== "" },
   ];
 
   fields.forEach(({ id, errId, msg, check }) => {
     const el  = document.getElementById(id);
     const err = document.getElementById(errId);
-    const val = el.value;
-
-    if (!check(val)) {
+    if (!check(el.value)) {
       el.classList.add("invalid");
       err.textContent = msg;
       valid = false;
@@ -225,7 +262,7 @@ function validateForm() {
 }
 
 // Remove invalid class on input
-["nombre", "telefono", "edad", "producto"].forEach((id) => {
+["nombre", "telefono", "edad", "producto", "temperatura"].forEach((id) => {
   const el = document.getElementById(id);
   if (el) {
     el.addEventListener("input",  () => { el.classList.remove("invalid"); document.getElementById(`err-${id}`)?.textContent && (document.getElementById(`err-${id}`).textContent = ""); });
@@ -243,8 +280,8 @@ document.getElementById("barrido-form").addEventListener("submit", async functio
   setSubmitLoading(true);
 
   const datos = {
-    usuario:     sessionStorage.getItem("usuarioActivo"),
-    agente:      sessionStorage.getItem("agenteActivo"),
+    usuario:     leerSesion()?.usuario,
+    agente:      leerSesion()?.agente,
     fecha:       (() => {
                    const now = new Date();
                    const parts = new Intl.DateTimeFormat("en-US", {
@@ -258,12 +295,14 @@ document.getElementById("barrido-form").addEventListener("submit", async functio
                    }).formatToParts(now);
                    const get = (t) => parts.find(p => p.type === t)?.value ?? "";
                    const ampm = get("dayPeriod").toLowerCase();
-                   return `${get("month")}/${get("day")}/${get("year")} ${get("hour")}:${get("minute")} ${ampm}`;
+                   return `${get("day")}/${get("month")}/${get("year")} ${get("hour")}:${get("minute")} ${ampm}`;
                  })(),
     nombre:      document.getElementById("nombre").value.trim(),
     telefono:    parseInt(document.getElementById("telefono").value.replace(/\s/g, ""), 10),
     edad:        parseInt(document.getElementById("edad").value, 10),
     producto:    document.getElementById("producto").value,
+    temperatura: document.getElementById("temperatura").value,
+    referencia:  document.getElementById("referencia").value.trim(),
     comentarios: document.getElementById("comentarios").value.trim(),
   };
 
@@ -275,11 +314,10 @@ document.getElementById("barrido-form").addEventListener("submit", async functio
     });
 
     this.reset();
-    document.getElementById("product-preview").style.display = "none";
     showToast();
 
     // Clear validation states
-    ["nombre", "telefono", "edad", "producto"].forEach((id) => {
+    ["nombre", "telefono", "edad", "producto", "temperatura"].forEach((id) => {
       document.getElementById(id)?.classList.remove("invalid");
     });
 
@@ -344,8 +382,8 @@ async function verRegistros() {
       <p>Cargando registros...</p>
     </div>`;
 
-  const rol    = sessionStorage.getItem("rolActivo");
-  const miUser = sessionStorage.getItem("usuarioActivo");
+  const rol    = leerSesion()?.rol;
+  const miUser = leerSesion()?.usuario;
 
   try {
     const response = await fetch(`${URL_GOOGLE_SCRIPT}?action=getLeads`);
@@ -356,19 +394,27 @@ async function verRegistros() {
       ? todosLosLeads.map(normalizarClaves)
       : todosLosLeads.filter((l) => l.usuario === miUser).map(normalizarClaves);
 
-    // Ordenar de más nuevo a más antiguo
+    // Ordenar de más nuevo a más antiguo (usando parseFechaParaFiltro para manejar todos los formatos)
     allLeads.sort((a, b) => {
-      const da = new Date(a.fecha);
-      const db = new Date(b.fecha);
-      // Fechas válidas: comparar numéricamente
-      if (!isNaN(da) && !isNaN(db)) return db - da;
-      // Si alguna no parsea, las ponemos al final
-      if (isNaN(da)) return 1;
-      if (isNaN(db)) return -1;
+      const da = parseFechaParaFiltro(a.fecha);
+      const db = parseFechaParaFiltro(b.fecha);
+      if (da && db) return db - da;
+      if (!da) return 1;
+      if (!db) return -1;
       return 0;
     });
 
     currentPage = 1;
+
+    // ── Mostrar botón de estadísticas para TODOS los usuarios ──
+    document.getElementById("btn-ir-stats").style.display = "flex";
+
+    // ── Controles exclusivos de administrador ──
+    if (rol === "Administrador") {
+      document.getElementById("wrap-filtro-asesor").style.display = "flex";
+      document.getElementById("wrap-stats-asesor").style.display  = "flex";
+      poblarSelectAsesores();
+    }
 
     document.getElementById("records-sub").textContent =
       `${allLeads.length} lead${allLeads.length !== 1 ? "s" : ""} encontrado${allLeads.length !== 1 ? "s" : ""}`;
@@ -387,19 +433,315 @@ async function verRegistros() {
 }
 
 /* ══════════════════════════════════════════════
-   FILTRAR TABLA
+   FILTROS RÁPIDOS
 ══════════════════════════════════════════════ */
-function filtrarTabla() {
-  const q = document.getElementById("search-input").value.toLowerCase();
-  const filtrados = allLeads.filter(
-    (l) =>
-      (l.nombre    || "").toLowerCase().includes(q) ||
-      (l.producto  || "").toLowerCase().includes(q) ||
-      (l.telefono  || "").toString().includes(q)     ||
-      (l.agente    || l.usuario || "").toLowerCase().includes(q)
-  );
+let activeQuickFilter = "todos";
+
+function setQuickFilter(tipo) {
+  activeQuickFilter = tipo;
+
+  // Actualizar botones activos
+  ["todos","hoy","semana","mes","rango"].forEach(t => {
+    const btn = document.getElementById("qf-" + t);
+    if (btn) btn.classList.toggle("active", t === tipo);
+  });
+
+  // Mostrar/ocultar rango personalizado
+  const rangoWrap = document.getElementById("rango-wrap");
+  if (rangoWrap) rangoWrap.style.display = tipo === "rango" ? "block" : "none";
+
+  // Limpiar fechas si no es rango
+  if (tipo !== "rango") {
+    const d = document.getElementById("fecha-desde");
+    const h = document.getElementById("fecha-hasta");
+    if (d) d.value = "";
+    if (h) h.value = "";
+  }
+
+  aplicarFiltros();
+}
+
+function toggleRangoPersonalizado() {
+  const esRango = activeQuickFilter === "rango";
+  setQuickFilter(esRango ? "todos" : "rango");
+}
+
+/* ══════════════════════════════════════════════
+   FILTROS: BÚSQUEDA + FECHA
+══════════════════════════════════════════════ */
+function aplicarFiltros() {
+  const q          = document.getElementById("search-input")?.value.toLowerCase() || "";
+  const desde      = document.getElementById("fecha-desde")?.value || "";
+  const hasta      = document.getElementById("fecha-hasta")?.value || "";
+  const asesorSel  = document.getElementById("filtro-asesor")?.value || "todos";
+
+  const filtrados = allLeads.filter((l) => {
+    // Filtro asesor
+    const asesorOk = asesorSel === "todos" ||
+      (l.usuario || "").toLowerCase() === asesorSel.toLowerCase() ||
+      (l.agente  || "").toLowerCase() === asesorSel.toLowerCase();
+
+    // Filtro texto
+    const textoOk =
+      !q ||
+      (l.nombre   || "").toLowerCase().includes(q) ||
+      (l.producto || "").toLowerCase().includes(q) ||
+      (l.telefono || "").toString().includes(q)    ||
+      (l.agente   || l.usuario || "").toLowerCase().includes(q);
+
+    // Filtro fecha
+    let fechaOk = true;
+    const fechaLead = parseFechaParaFiltro(l.fecha);
+
+    if (activeQuickFilter === "hoy") {
+      const b = getLimaBounds("hoy");
+      fechaOk = fechaLead ? fechaLead >= b.ini && fechaLead <= b.fin : false;
+    } else if (activeQuickFilter === "semana") {
+      const b = getLimaBounds("semana");
+      fechaOk = fechaLead ? fechaLead >= b.ini && fechaLead <= b.fin : false;
+    } else if (activeQuickFilter === "mes") {
+      const b = getLimaBounds("mes");
+      fechaOk = fechaLead ? fechaLead >= b.ini && fechaLead <= b.fin : false;
+    } else if (activeQuickFilter === "rango" && (desde || hasta)) {
+      if (desde && fechaLead) fechaOk = fechaOk && fechaLead >= new Date(desde + "T05:00:00Z");
+      if (hasta && fechaLead) fechaOk = fechaOk && fechaLead <= new Date(hasta + "T28:59:59Z");
+      if (!fechaLead) fechaOk = false;
+    }
+
+    return asesorOk && textoOk && fechaOk;
+  });
+
   currentPage = 1;
   renderTable(filtrados, document.getElementById("tabla-registros"));
+}
+
+// Parsear fecha del lead para comparación
+// Retorna un Date cuya hora local refleja la hora en Lima
+function parseFechaParaFiltro(valor) {
+  if (!valor) return null;
+
+  // Formato propio: "dd/mm/yyyy h:mm am/pm"
+  // Interpretamos los valores directamente como hora Lima → creamos Date local equivalente
+  const mDDMMYYYY = String(valor).match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})\s*(am|pm)$/i
+  );
+  if (mDDMMYYYY) {
+    const day  = parseInt(mDDMMYYYY[1], 10);
+    const mon  = parseInt(mDDMMYYYY[2], 10) - 1;
+    const yr   = parseInt(mDDMMYYYY[3], 10);
+    let   h    = parseInt(mDDMMYYYY[4], 10);
+    const min  = parseInt(mDDMMYYYY[5], 10);
+    const ampm = mDDMMYYYY[6].toLowerCase();
+    if (ampm === "pm" && h !== 12) h += 12;
+    if (ampm === "am" && h === 12) h = 0;
+    // Construir como UTC con offset Lima (-05:00) para que la comparación sea correcta
+    // Lima = UTC-5, así que sumamos 5 horas para obtener el UTC equivalente
+    return new Date(Date.UTC(yr, mon, day, h + 5, min, 0, 0));
+  }
+
+  // ISO u otro formato nativo (Google Sheets serializa como ISO)
+  const iso = new Date(valor);
+  if (!isNaN(iso.getTime())) return iso;
+
+  return null;
+}
+
+// Obtener los límites de hoy/semana/mes en UTC equivalente a Lima (UTC-5)
+function getLimaBounds(tipo) {
+  // Hora actual en Lima
+  const nowLima  = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Lima" }));
+  const yr  = nowLima.getFullYear();
+  const mon = nowLima.getMonth();
+  const day = nowLima.getDate();
+  const dow = nowLima.getDay(); // 0=dom, 1=lun...
+
+  if (tipo === "hoy") {
+    // ini = 00:00 Lima = 05:00 UTC
+    const ini = new Date(Date.UTC(yr, mon, day, 5, 0, 0, 0));
+    const fin = new Date(Date.UTC(yr, mon, day, 28, 59, 59, 999)); // 28 = 23+5
+    return { ini, fin };
+  }
+  if (tipo === "semana") {
+    const diffLunes = (dow + 6) % 7; // días desde el lunes
+    const lunes = new Date(Date.UTC(yr, mon, day - diffLunes, 5, 0, 0, 0));
+    const domingo = new Date(Date.UTC(yr, mon, day - diffLunes + 6, 28, 59, 59, 999));
+    return { ini: lunes, fin: domingo };
+  }
+  if (tipo === "mes") {
+    const ini = new Date(Date.UTC(yr, mon, 1, 5, 0, 0, 0));
+    const fin = new Date(Date.UTC(yr, mon + 1, 0, 28, 59, 59, 999));
+    return { ini, fin };
+  }
+  return null;
+}
+
+function limpiarFechas() {
+  document.getElementById("fecha-desde").value = "";
+  document.getElementById("fecha-hasta").value = "";
+  aplicarFiltros();
+}
+
+function filtrarTabla() { aplicarFiltros(); }
+
+/* ══════════════════════════════════════════════
+   MODAL DE EXPORTACIÓN
+══════════════════════════════════════════════ */
+let exportPeriod = "todos";
+
+function exportarExcel() {
+  const overlay = document.getElementById("export-modal-overlay");
+  overlay.style.display = "flex";
+  overlay.offsetHeight;
+  overlay.classList.add("active");
+  document.body.style.overflow = "hidden";
+
+  // Sincronizar período activo con la vista actual
+  exportPeriod = activeQuickFilter;
+  document.querySelectorAll(".export-period-btn").forEach(b => b.classList.remove("active"));
+  const syncBtn = document.getElementById("ep-" + exportPeriod);
+  if (syncBtn) syncBtn.classList.add("active");
+
+  // Nombre de archivo por defecto
+  const usuario = leerSesion()?.agente || leerSesion()?.usuario || "Leads";
+  document.getElementById("export-filename").value = `Leads_${usuario}`;
+  actualizarPreview();
+
+  // Rango personalizado
+  document.getElementById("export-rango-wrap").style.display = exportPeriod === "rango" ? "flex" : "none";
+
+  // Preview filename on input
+  document.getElementById("export-filename").oninput = () => {
+    const val = document.getElementById("export-filename").value.trim() || "Mis_Leads";
+    document.getElementById("filename-preview").textContent = val + ".xlsx";
+  };
+  document.getElementById("filename-preview").textContent =
+    (document.getElementById("export-filename").value.trim() || "Mis_Leads") + ".xlsx";
+}
+
+function closeExportModal(event) {
+  if (event && event.target !== document.getElementById("export-modal-overlay")) return;
+  const overlay = document.getElementById("export-modal-overlay");
+  overlay.classList.remove("active");
+  setTimeout(() => { overlay.style.display = "none"; document.body.style.overflow = ""; }, 250);
+}
+
+function selectExportPeriod(period, btn) {
+  exportPeriod = period;
+  document.querySelectorAll(".export-period-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  document.getElementById("export-rango-wrap").style.display = period === "rango" ? "flex" : "none";
+  actualizarPreview();
+}
+
+function getLeadsFiltradosParaExportar() {
+  const desde = document.getElementById("exp-desde")?.value || "";
+  const hasta = document.getElementById("exp-hasta")?.value || "";
+
+  return allLeads.filter((l) => {
+    const fechaLead = parseFechaParaFiltro(l.fecha);
+
+    if (exportPeriod === "hoy") {
+      const b = getLimaBounds("hoy");
+      return fechaLead ? fechaLead >= b.ini && fechaLead <= b.fin : false;
+    }
+    if (exportPeriod === "semana") {
+      const b = getLimaBounds("semana");
+      return fechaLead ? fechaLead >= b.ini && fechaLead <= b.fin : false;
+    }
+    if (exportPeriod === "mes") {
+      const b = getLimaBounds("mes");
+      return fechaLead ? fechaLead >= b.ini && fechaLead <= b.fin : false;
+    }
+    if (exportPeriod === "rango") {
+      let ok = true;
+      if (desde && fechaLead) ok = ok && fechaLead >= new Date(desde + "T05:00:00Z");
+      if (hasta && fechaLead) ok = ok && fechaLead <= new Date(hasta + "T28:59:59Z");
+      if (!fechaLead && (desde || hasta)) ok = false;
+      return ok;
+    }
+    return true; // "todos"
+  });
+}
+
+function actualizarPreview() {
+  const datos  = getLeadsFiltradosParaExportar();
+  const labels = { todos: "Todos los registros", hoy: "Hoy", semana: "Esta semana", mes: "Este mes", rango: "Rango personalizado" };
+  document.getElementById("preview-count").textContent  = datos.length;
+  document.getElementById("preview-period").textContent = labels[exportPeriod] || "—";
+}
+
+function ejecutarExportacion() {
+  const datos = getLeadsFiltradosParaExportar();
+
+  if (datos.length === 0) {
+    alert("No hay leads en el período seleccionado para exportar.");
+    return;
+  }
+
+  const rol           = leerSesion()?.rol;
+  const mostrarAsesor = rol === "Administrador";
+  const usuario       = leerSesion()?.agente || leerSesion()?.usuario || "";
+  const filename      = (document.getElementById("export-filename").value.trim() || "Mis_Leads") + ".xlsx";
+
+  // Construir filas
+  const headers = ["Fecha", "Nombre", "Teléfono", "Edad", "Producto", "Temperatura", ...(mostrarAsesor ? ["Asesor"] : []), "Referencia", "Comentarios"];
+
+  const filas = datos.map(d => {
+    const row = {
+      "Fecha":        formatFecha(d.fecha),
+      "Nombre":       d.nombre || "",
+      "Teléfono":     String(d.telefono ?? d["teléfono"] ?? ""),
+      "Edad":         d.edad ?? "",
+      "Producto":     d.producto || "",
+      "Temperatura":  d.temperatura || "",
+      "Referencia":   d.referencia || "",
+      "Comentarios":  d.comentarios || "",
+    };
+    if (mostrarAsesor) row["Asesor"] = d.agente || d.usuario || "";
+    const ordered = {};
+    headers.forEach(h => { ordered[h] = row[h] ?? ""; });
+    return ordered;
+  });
+
+  // Crear workbook con SheetJS
+  const ws = XLSX.utils.json_to_sheet(filas, { header: headers });
+
+  // Estilos de ancho de columna
+  ws["!cols"] = [
+    { wch: 22 }, // Fecha
+    { wch: 28 }, // Nombre
+    { wch: 14 }, // Teléfono
+    { wch: 8  }, // Edad
+    { wch: 18 }, // Producto
+    { wch: 12 }, // Temperatura
+    ...(mostrarAsesor ? [{ wch: 16 }] : []), // Asesor
+    { wch: 28 }, // Referencia
+    { wch: 36 }, // Comentarios
+  ];
+
+  const wb = XLSX.utils.book_new();
+  const sheetName = `Leads ${usuario}`.slice(0, 31); // Excel limit
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+  // Descargar
+  XLSX.writeFile(wb, filename);
+
+  // Cerrar modal con pequeño delay
+  setTimeout(() => closeExportModal(), 300);
+
+  // Toast de confirmación
+  showToastExport(datos.length);
+}
+
+function showToastExport(count) {
+  // Reutilizamos el toast de edición con texto diferente
+  const toast = document.getElementById("toast-edit");
+  toast.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> ${count} lead${count !== 1 ? "s" : ""} exportado${count !== 1 ? "s" : ""} correctamente`;
+  toast.style.display = "flex";
+  setTimeout(() => {
+    toast.style.display = "none";
+    toast.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> ¡Lead actualizado con éxito!`;
+  }, 3500);
 }
 
 /* ══════════════════════════════════════════════
@@ -407,9 +749,15 @@ function filtrarTabla() {
 ══════════════════════════════════════════════ */
 function formatFecha(valor) {
   if (!valor) return "—";
-  // Intenta parsear cualquier formato (ISO, string de texto, Date de Sheets, etc.)
+
+  // Si ya está en nuestro formato "dd/mm/yyyy h:mm am/pm", devolverlo directo
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}\s*(am|pm)$/i.test(String(valor).trim())) {
+    return String(valor).trim();
+  }
+
+  // Para fechas ISO u otros formatos que sí parsea new Date() correctamente
   const date = new Date(valor);
-  if (isNaN(date.getTime())) return valor; // Si no se puede parsear, muestra tal cual
+  if (isNaN(date.getTime())) return String(valor); // fallback: mostrar tal cual
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Lima",
     day:    "2-digit",
@@ -419,9 +767,9 @@ function formatFecha(valor) {
     minute: "2-digit",
     hour12: true,
   }).formatToParts(date);
-  const get = (t) => parts.find(p => p.type === t)?.value ?? "";
+  const get  = (t) => parts.find(p => p.type === t)?.value ?? "";
   const ampm = get("dayPeriod").toLowerCase();
-  return `${get("month")}/${get("day")}/${get("year")} ${get("hour")}:${get("minute")} ${ampm}`;
+  return `${get("day")}/${get("month")}/${get("year")} ${get("hour")}:${get("minute")} ${ampm}`;
 }
 
 function getBadgeClass(producto) {
@@ -435,6 +783,20 @@ function getBadgeClass(producto) {
   return map[producto] || "badge-classic";
 }
 
+function getTempBadge(temp) {
+  if (!temp) return `<span style="color:var(--slate-300)">—</span>`;
+  const cfg = {
+    "Frío":     { bg: "#fee2e2", color: "#b91c1c", dot: "#ef4444" },
+    "Tibio":    { bg: "#fef9c3", color: "#92400e", dot: "#f59e0b" },
+    "Caliente": { bg: "#dcfce7", color: "#166534", dot: "#22c55e" },
+  };
+  const c = cfg[temp];
+  if (!c) return temp;
+  return `<span class="badge-temp" style="background:${c.bg};color:${c.color}">
+    <span style="width:7px;height:7px;border-radius:50%;background:${c.dot};display:inline-block;margin-right:4px;flex-shrink:0"></span>${temp}
+  </span>`;
+}
+
 function renderTable(datos, contenedor) {
   if (datos.length === 0) {
     contenedor.innerHTML = `
@@ -445,7 +807,7 @@ function renderTable(datos, contenedor) {
     return;
   }
 
-  const rol           = sessionStorage.getItem("rolActivo");
+  const rol           = leerSesion()?.rol;
   const mostrarAsesor = rol === "Administrador";
   const totalPages    = Math.ceil(datos.length / PAGE_SIZE);
 
@@ -467,7 +829,9 @@ function renderTable(datos, contenedor) {
           <th>Teléfono</th>
           <th>Edad</th>
           <th>Producto</th>
+          <th>Temp.</th>
           ${mostrarAsesor ? "<th>Asesor</th>" : ""}
+          <th>Referencia</th>
           <th>Comentarios</th>
           <th style="width:40px"></th>
         </tr>
@@ -477,6 +841,7 @@ function renderTable(datos, contenedor) {
   pagSlice.forEach((d) => {
     const badgeClass = getBadgeClass(d.producto);
     const globalIdx  = allLeads.indexOf(d);
+    const tempBadge  = getTempBadge(d.temperatura);
     html += `
       <tr class="row-clickable" onclick="abrirEditModal(${globalIdx})" title="Clic para editar este lead">
         <td style="white-space:nowrap; color:var(--slate-500); font-size:0.8rem">${formatFecha(d.fecha)}</td>
@@ -484,8 +849,10 @@ function renderTable(datos, contenedor) {
         <td>${String(d.telefono ?? d["teléfono"] ?? "").trim() || "—"}</td>
         <td style="text-align:center">${d.edad ?? d["edad"] ?? "—"}</td>
         <td><span class="badge-product ${badgeClass}">${d.producto || "—"}</span></td>
+        <td>${tempBadge}</td>
         ${mostrarAsesor ? `<td style="color:var(--slate-500); font-size:0.82rem">${d.agente || d.usuario || "—"}</td>` : ""}
-        <td style="color:var(--slate-500); font-size:0.82rem; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="${d.comentarios || ""}">${d.comentarios || "—"}</td>
+        <td style="color:var(--slate-500); font-size:0.82rem; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="${d.referencia || ""}">${d.referencia || "—"}</td>
+        <td style="color:var(--slate-500); font-size:0.82rem; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="${d.comentarios || ""}">${d.comentarios || "—"}</td>
         <td class="td-edit-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></td>
       </tr>`;
   });
@@ -564,6 +931,8 @@ function abrirEditModal(idx) {
   document.getElementById("edit-telefono").value    = String(lead.telefono ?? lead["teléfono"] ?? "");
   document.getElementById("edit-edad").value        = lead.edad        ?? "";
   document.getElementById("edit-producto").value    = lead.producto    || "";
+  document.getElementById("edit-temperatura").value = lead.temperatura || "";
+  document.getElementById("edit-referencia").value  = lead.referencia  || "";
   document.getElementById("edit-comentarios").value = lead.comentarios || "";
 
   // Mostrar fecha (solo lectura en el subtítulo)
@@ -608,7 +977,8 @@ function validateEditForm() {
     { id: "edit-nombre",   errId: "edit-err-nombre",   msg: "Ingresa el nombre completo",      check: (v) => v.trim().length >= 3 },
     { id: "edit-telefono", errId: "edit-err-telefono", msg: "El teléfono debe tener exactamente 9 dígitos", check: (v) => /^\d{9}$/.test(v.replace(/\s/g, "")) },
     { id: "edit-edad",     errId: "edit-err-edad",     msg: "Ingresa una edad válida (1–120)",               check: (v) => /^\d+$/.test(v) && +v >= 1 && +v <= 120 },
-    { id: "edit-producto", errId: "edit-err-producto", msg: "Selecciona un producto",          check: (v) => v !== "" },
+    { id: "edit-producto",    errId: "edit-err-producto",    msg: "Selecciona un producto",              check: (v) => v !== "" },
+    { id: "edit-temperatura", errId: "edit-err-temperatura", msg: "Selecciona la temperatura del lead",   check: (v) => v !== "" },
   ];
   fields.forEach(({ id, errId, msg, check }) => {
     const el  = document.getElementById(id);
@@ -650,6 +1020,8 @@ async function guardarEdicion() {
     telefono:    parseInt(document.getElementById("edit-telefono").value.replace(/\s/g, ""), 10),
     edad:        parseInt(document.getElementById("edit-edad").value, 10),
     producto:    document.getElementById("edit-producto").value,
+    temperatura: document.getElementById("edit-temperatura").value,
+    referencia:  document.getElementById("edit-referencia").value.trim(),
     comentarios: document.getElementById("edit-comentarios").value.trim(),
   };
 
@@ -699,7 +1071,7 @@ function showToastEdit() {
 let qrInstance = null;
 
 function iniciarEncuesta() {
-  const usuario = sessionStorage.getItem("usuarioActivo") || "asesor";
+  const usuario = leerSesion()?.usuario || "asesor";
   // La URL de la encuesta pública con el usuario codificado como parámetro
   const baseUrl = window.location.href.replace(/\/[^/]*$/, "") + "/encuesta.html";
   const encuestaUrl = `${baseUrl}?u=${encodeURIComponent(usuario)}`;
@@ -773,10 +1145,565 @@ function descargarQR() {
   const canvas = document.querySelector("#qr-container canvas");
   if (!canvas) return;
 
-  const usuario = sessionStorage.getItem("usuarioActivo") || "asesor";
+  const usuario = leerSesion()?.usuario || "asesor";
   const link    = document.createElement("a");
   link.download = `QR_Encuesta_${usuario}.png`;
   link.href     = canvas.toDataURL("image/png");
   link.click();
 }
 
+/* ══════════════════════════════════════════════
+   ADMIN — POBLAR SELECTORES DE ASESORES
+══════════════════════════════════════════════ */
+function poblarSelectAsesores() {
+  const asesores = [...new Set(allLeads.map(l => l.agente || l.usuario).filter(Boolean))].sort();
+
+  ["filtro-asesor", "stats-asesor"].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    // Preservar opción "todos"
+    sel.innerHTML = `<option value="todos">Todos los asesores</option>`;
+    asesores.forEach(a => {
+      const opt = document.createElement("option");
+      opt.value = a;
+      opt.textContent = a;
+      sel.appendChild(opt);
+    });
+  });
+}
+
+/* ══════════════════════════════════════════════
+   ADMIN — NAVEGACIÓN LISTA ↔ STATS
+══════════════════════════════════════════════ */
+function mostrarEstadisticas() {
+  document.getElementById("vista-lista").style.display = "none";
+  document.getElementById("vista-stats").style.display = "block";
+
+  const rol    = leerSesion()?.rol;
+  const agente = leerSesion()?.agente || leerSesion()?.usuario;
+
+  if (rol === "Administrador") {
+    // Admin: poblar selector y mostrar vista global por defecto
+    poblarSelectAsesores();
+    const sel = document.getElementById("stats-asesor");
+    if (sel) sel.value = "todos";
+    document.querySelector(".stats-topbar-title").textContent = "Panel de Estadísticas";
+  } else {
+    // Asesor: forzar su propio nombre en el selector oculto
+    const sel = document.getElementById("stats-asesor");
+    if (sel) {
+      sel.innerHTML = `<option value="${agente}" selected>${agente}</option>`;
+      sel.value = agente;
+    }
+    document.querySelector(".stats-topbar-title").textContent = "Mis Estadísticas";
+  }
+
+  // Período inicial: mes
+  currentStatsPeriod = "mes";
+  document.querySelectorAll(".sp-btn").forEach(b => b.classList.remove("active"));
+  document.getElementById("sp-mes")?.classList.add("active");
+  document.getElementById("stats-rango-wrap").style.display = "none";
+  calMesAsesor = null;
+  renderStats();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function volverALista() {
+  document.getElementById("vista-stats").style.display = "none";
+  document.getElementById("vista-lista").style.display = "block";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+/* ══════════════════════════════════════════════
+   ADMIN — PERÍODO DE ESTADÍSTICAS
+══════════════════════════════════════════════ */
+let currentStatsPeriod = "mes";
+
+function setStatsPeriod(period, btn) {
+  currentStatsPeriod = period;
+  document.querySelectorAll(".sp-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  const rangoWrap = document.getElementById("stats-rango-wrap");
+  rangoWrap.style.display = period === "rango" ? "block" : "none";
+
+  // Sincronizar el calendario al mes correspondiente
+  const hoy = new Date();
+  if (period === "hoy" || period === "semana" || period === "mes") {
+    // Todos estos caen en el mes actual
+    calMesAsesor = { year: hoy.getFullYear(), month: hoy.getMonth() };
+  }
+
+  if (period !== "rango") renderStats();
+}
+
+/* ══════════════════════════════════════════════
+   ADMIN — FILTRAR LEADS PARA STATS
+══════════════════════════════════════════════ */
+function getLeadsParaStats() {
+  const rol       = leerSesion()?.rol;
+  const agente    = leerSesion()?.agente || leerSesion()?.usuario || "";
+  const asesorSel = document.getElementById("stats-asesor")?.value || "todos";
+  const desde     = document.getElementById("stats-desde")?.value || "";
+  const hasta     = document.getElementById("stats-hasta")?.value || "";
+  const hoy       = new Date();
+
+  return allLeads.filter(l => {
+    // Filtro asesor: admin respeta el selector, no-admin siempre filtra por el suyo
+    let asesorOk;
+    if (rol === "Administrador") {
+      asesorOk = asesorSel === "todos" ||
+        (l.agente  || "").toLowerCase() === asesorSel.toLowerCase() ||
+        (l.usuario || "").toLowerCase() === asesorSel.toLowerCase();
+    } else {
+      asesorOk = (l.agente  || "").toLowerCase() === agente.toLowerCase() ||
+                 (l.usuario || "").toLowerCase() === agente.toLowerCase();
+    }
+
+    const fl = parseFechaParaFiltro(l.fecha);
+    let fechaOk = true;
+
+    if (currentStatsPeriod === "hoy") {
+      const b = getLimaBounds("hoy");
+      fechaOk = fl ? fl >= b.ini && fl <= b.fin : false;
+    } else if (currentStatsPeriod === "semana") {
+      const b = getLimaBounds("semana");
+      fechaOk = fl ? fl >= b.ini && fl <= b.fin : false;
+    } else if (currentStatsPeriod === "mes") {
+      const b = getLimaBounds("mes");
+      fechaOk = fl ? fl >= b.ini && fl <= b.fin : false;
+    } else if (currentStatsPeriod === "rango") {
+      if (desde && fl) fechaOk = fechaOk && fl >= new Date(desde + "T05:00:00Z");
+      if (hasta && fl) fechaOk = fechaOk && fl <= new Date(hasta + "T28:59:59Z");
+      if (!fl && (desde || hasta)) fechaOk = false;
+    }
+
+    return asesorOk && fechaOk;
+  });
+}
+
+/* ══════════════════════════════════════════════
+   ADMIN — RENDER STATS PRINCIPAL
+══════════════════════════════════════════════ */
+function renderStats() {
+  const rol       = leerSesion()?.rol;
+  const agente    = leerSesion()?.agente || leerSesion()?.usuario;
+  const asesorSel = document.getElementById("stats-asesor")?.value || "todos";
+  const datos     = getLeadsParaStats();
+  const container = document.getElementById("stats-content");
+
+  // No-admin siempre ve su propio calendario individual
+  if (rol !== "Administrador") {
+    if (!calMesAsesor) {
+      const h = new Date();
+      calMesAsesor = { year: h.getFullYear(), month: h.getMonth() };
+    }
+    renderStatsAsesor(agente, datos, container);
+    return;
+  }
+
+  // Admin: reset calendario al cambiar de asesor a "todos"
+  if (asesorSel === "todos") {
+    calMesAsesor = null;
+    renderStatsGlobal(datos, container);
+  } else {
+    if (!calMesAsesor) {
+      const h = new Date();
+      calMesAsesor = { year: h.getFullYear(), month: h.getMonth() };
+    }
+    renderStatsAsesor(asesorSel, datos, container);
+  }
+}
+
+/* ── STATS GLOBALES (todos los asesores) ── */
+function renderStatsGlobal(datos, container) {
+  // Conteo por asesor
+  const porAsesor = {};
+  datos.forEach(l => {
+    const key = l.agente || l.usuario || "—";
+    porAsesor[key] = (porAsesor[key] || 0) + 1;
+  });
+
+  const ranking = Object.entries(porAsesor).sort((a, b) => b[1] - a[1]);
+  const medals  = ["🥇","🥈","🥉"];
+  const topColors = ["#FFD700","#C0C0C0","#CD7F32"];
+
+  // Calcular máximo para barras proporcionales
+  const maxLeads = ranking[0]?.[1] || 1;
+
+  const periodLabel = { mes: "este mes", semana: "esta semana", hoy: "hoy", rango: "en el rango seleccionado" };
+
+  container.innerHTML = `
+    <div class="stats-global">
+
+      <!-- KPI principal -->
+      <div class="kpi-card kpi-main">
+        <div class="kpi-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <div>
+          <div class="kpi-num">${datos.length}</div>
+          <div class="kpi-label">leads captados ${periodLabel[currentStatsPeriod] || ""}</div>
+        </div>
+      </div>
+
+      <!-- KPIs secundarios -->
+      <div class="kpi-grid">
+        <div class="kpi-card kpi-sm">
+          <div class="kpi-sm-num">${Object.keys(porAsesor).length}</div>
+          <div class="kpi-sm-label">asesores activos</div>
+        </div>
+        <div class="kpi-card kpi-sm">
+          <div class="kpi-sm-num">${Object.keys(porAsesor).length ? Math.round(datos.length / Object.keys(porAsesor).length) : 0}</div>
+          <div class="kpi-sm-label">leads promedio / asesor</div>
+        </div>
+        <div class="kpi-card kpi-sm">
+          <div class="kpi-sm-num">${ranking[0]?.[1] || 0}</div>
+          <div class="kpi-sm-label">máximo individual</div>
+        </div>
+      </div>
+
+      <!-- Ranking completo con top 3 resaltados -->
+      ${ranking.length > 0 ? `
+      <div class="stats-section-card">
+        <div class="stats-section-header">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          Ranking de Asesores
+        </div>
+        <div class="ranking-table">
+          ${ranking.map(([nombre, count], i) => {
+            const esTop = i < 3;
+            const medal = esTop ? medals[i] : "";
+            const barColor = esTop ? topColors[i] : null;
+            return `
+            <div class="ranking-row ${esTop ? "ranking-top" : ""}" style="${esTop ? `border-left: 3px solid ${topColors[i]};` : ""}">
+              <div class="ranking-pos">${medal || (i + 1)}</div>
+              <div class="ranking-avatar" style="${esTop ? `background: linear-gradient(135deg, ${topColors[i]}, ${topColors[i]}cc)` : ""}">${nombre.charAt(0).toUpperCase()}</div>
+              <div class="ranking-nombre" style="${esTop ? "font-weight:700; color:var(--slate-900)" : ""}">${nombre}</div>
+              <div class="ranking-bar-wrap">
+                <div class="ranking-bar" style="width:${Math.round((count/maxLeads)*100)}%; ${barColor ? `background:${barColor}` : ""}"></div>
+              </div>
+              <div class="ranking-count" style="${esTop ? `color:${topColors[i]}` : ""}">${count}</div>
+            </div>`;
+          }).join("")}
+        </div>
+      </div>` : `
+      <div class="empty-state" style="padding:3rem">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <p>No hay leads en el período seleccionado.</p>
+      </div>`}
+
+    </div>
+  `;
+}
+
+/* ── STATS INDIVIDUALES (un asesor) ── */
+let chartInstance  = null;
+let calMesAsesor   = null; // {year, month} seleccionado para el calendario
+
+function renderStatsAsesor(asesor, datos, container) {
+  // Agrupar todos los leads del asesor (sin filtro de período) por día
+  // para el calendario (el calendario muestra el mes seleccionado)
+  const todosLeadsAsesor = allLeads.filter(l =>
+    (l.agente  || "").toLowerCase() === asesor.toLowerCase() ||
+    (l.usuario || "").toLowerCase() === asesor.toLowerCase()
+  );
+
+  const porDiaTodos = {};
+  todosLeadsAsesor.forEach(l => {
+    const fl = parseFechaParaFiltro(l.fecha);
+    if (!fl) return;
+    const key = `${String(fl.getDate()).padStart(2,"0")}/${String(fl.getMonth()+1).padStart(2,"0")}/${fl.getFullYear()}`;
+    porDiaTodos[key] = (porDiaTodos[key] || 0) + 1;
+  });
+
+  // Leads filtrados por período (para KPIs y gráfica)
+  const porDia = {};
+  datos.forEach(l => {
+    const fl = parseFechaParaFiltro(l.fecha);
+    if (!fl) return;
+    const key = `${String(fl.getDate()).padStart(2,"0")}/${String(fl.getMonth()+1).padStart(2,"0")}/${fl.getFullYear()}`;
+    porDia[key] = (porDia[key] || 0) + 1;
+  });
+
+  // Mes/año para el calendario
+  const hoy = new Date();
+  if (!calMesAsesor) calMesAsesor = { year: hoy.getFullYear(), month: hoy.getMonth() };
+  const { year, month } = calMesAsesor;
+
+  const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+  const DIAS  = ["Lu","Ma","Mi","Ju","Vi","Sá","Do"];
+
+  // Construir calendario con los datos de TODOS los meses (no solo el período)
+  const primerDia    = new Date(year, month, 1);
+  const ultimoDia    = new Date(year, month + 1, 0);
+  const offsetInicio = (primerDia.getDay() + 6) % 7;
+
+  let calCells = "";
+  // Calcular rango de "esta semana" para resaltar en el calendario
+  const lunesSemana = new Date(hoy);
+  lunesSemana.setDate(hoy.getDate() - ((hoy.getDay() + 6) % 7));
+  lunesSemana.setHours(0,0,0,0);
+  const domingoSemana = new Date(lunesSemana);
+  domingoSemana.setDate(lunesSemana.getDate() + 6);
+  domingoSemana.setHours(23,59,59,999);
+
+  for (let i = 0; i < offsetInicio; i++) calCells += `<div class="cal-cell cal-empty"></div>`;
+
+  for (let d = 1; d <= ultimoDia.getDate(); d++) {
+    const key        = `${String(d).padStart(2,"0")}/${String(month+1).padStart(2,"0")}/${year}`;
+    const count      = porDiaTodos[key] || 0;
+    const fechaCelda = new Date(year, month, d);
+    const esHoy      = d === hoy.getDate() && month === hoy.getMonth() && year === hoy.getFullYear();
+    const esSemana   = fechaCelda >= lunesSemana && fechaCelda <= domingoSemana && month === hoy.getMonth() && year === hoy.getFullYear();
+    const tieneLeads = count > 0;
+
+    // Clases de resaltado según período activo
+    let highlightClass = "";
+    if (currentStatsPeriod === "hoy"    && esHoy)    highlightClass = "cal-highlight-hoy";
+    if (currentStatsPeriod === "semana" && esSemana) highlightClass = "cal-highlight-semana";
+
+    calCells += `
+      <div class="cal-cell ${tieneLeads ? "cal-active" : ""} ${esHoy ? "cal-today" : ""} ${highlightClass}">
+        <span class="cal-day-num">${d}</span>
+        ${tieneLeads ? `<span class="cal-count">${count}</span>` : ""}
+      </div>`;
+  }
+
+  // Datos para la gráfica (período filtrado, ordenados)
+  const diasOrdenados = Object.entries(porDia).sort((a, b) => {
+    const [da, ma, ya] = a[0].split("/").map(Number);
+    const [db, mb, yb] = b[0].split("/").map(Number);
+    return new Date(ya, ma-1, da) - new Date(yb, mb-1, db);
+  });
+
+  // Opciones para el selector de mes (últimos 24 meses)
+  let mesOpts = "";
+  for (let i = 0; i < 24; i++) {
+    const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    const sel = (y === year && m === month) ? "selected" : "";
+    mesOpts += `<option value="${y}-${m}" ${sel}>${MESES[m]} ${y}</option>`;
+  }
+
+  container.innerHTML = `
+    <div class="stats-asesor">
+
+      <!-- KPI asesor -->
+      <div class="kpi-asesor-header">
+        <div class="kpi-asesor-avatar">${asesor.charAt(0).toUpperCase()}</div>
+        <div>
+          <div class="kpi-asesor-nombre">${asesor}</div>
+          <div class="kpi-asesor-sub">${datos.length} lead${datos.length !== 1 ? "s" : ""} · ${Object.keys(porDia).length} día${Object.keys(porDia).length !== 1 ? "s" : ""} en campo (período seleccionado)</div>
+        </div>
+        <div class="kpi-asesor-badges">
+          <div class="kpi-badge">
+            <div class="kpi-badge-num">${datos.length}</div>
+            <div class="kpi-badge-label">Total leads</div>
+          </div>
+          <div class="kpi-badge">
+            <div class="kpi-badge-num">${Object.keys(porDia).length}</div>
+            <div class="kpi-badge-label">Días en campo</div>
+          </div>
+          <div class="kpi-badge">
+            <div class="kpi-badge-num">${Object.keys(porDia).length ? (datos.length / Object.keys(porDia).length).toFixed(1) : 0}</div>
+            <div class="kpi-badge-label">Promedio/día</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Calendario -->
+      <div class="stats-section-card">
+        <div class="stats-section-header" style="justify-content:space-between; flex-wrap:wrap; gap:8px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            Calendario de Campo
+          </div>
+          <div class="cal-mes-nav">
+            <button class="cal-nav-btn" onclick="cambiarMesCal(-1)" title="Mes anterior">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <select class="cal-mes-select" onchange="seleccionarMesCal(this.value)">
+              ${mesOpts}
+            </select>
+            <button class="cal-nav-btn" onclick="cambiarMesCal(1)" title="Mes siguiente"
+              ${(year === hoy.getFullYear() && month === hoy.getMonth()) ? 'disabled' : ''}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="calendar-wrap">
+          <div class="cal-header">
+            ${DIAS.map(d => `<div class="cal-header-cell">${d}</div>`).join("")}
+          </div>
+          <div class="cal-grid">
+            ${calCells}
+          </div>
+          <div class="cal-legend">
+            <span class="cal-legend-dot active-dot"></span> Días con leads
+            <span class="cal-today-dot"></span> Hoy
+            ${currentStatsPeriod === "semana" ? `<span class="cal-legend-dot semana-dot"></span> Esta semana` : ""}
+            ${currentStatsPeriod === "hoy"    ? `<span class="cal-legend-dot hoy-dot"></span> Hoy (filtro activo)` : ""}
+          </div>
+        </div>
+      </div>
+
+      <!-- Gráfica de producción -->
+      ${diasOrdenados.length > 0 ? `
+      <div class="stats-section-card">
+        <div class="stats-section-header">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Producción por Salida de Campo (período seleccionado)
+        </div>
+        <div class="chart-container">
+          <canvas id="chart-produccion"></canvas>
+        </div>
+        <div class="chart-trend" id="chart-trend"></div>
+      </div>` : `
+      <div class="stats-section-card">
+        <div class="empty-state" style="padding:2rem">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <p>No hay datos de campo en el período seleccionado.</p>
+        </div>
+      </div>`}
+
+    </div>
+  `;
+
+  if (diasOrdenados.length > 0) {
+    requestAnimationFrame(() => dibujarGrafica(diasOrdenados));
+  }
+}
+
+/* ── Navegación del calendario ── */
+function cambiarMesCal(delta) {
+  if (!calMesAsesor) { const h = new Date(); calMesAsesor = { year: h.getFullYear(), month: h.getMonth() }; }
+  let { year, month } = calMesAsesor;
+  month += delta;
+  if (month > 11) { month = 0; year++; }
+  if (month < 0)  { month = 11; year--; }
+
+  // No permitir avanzar más allá del mes actual
+  const hoy = new Date();
+  if (year > hoy.getFullYear() || (year === hoy.getFullYear() && month > hoy.getMonth())) return;
+
+  calMesAsesor = { year, month };
+  sincronizarPeriodoConCalendario(year, month);
+  renderStats();
+}
+
+function seleccionarMesCal(value) {
+  const [y, m] = value.split("-").map(Number);
+  calMesAsesor = { year: y, month: m };
+  sincronizarPeriodoConCalendario(y, m);
+  renderStats();
+}
+
+// Sincroniza el filtro de período con el mes del calendario
+function sincronizarPeriodoConCalendario(year, month) {
+  const hoy = new Date();
+  const esEsteMes = year === hoy.getFullYear() && month === hoy.getMonth();
+
+  if (esEsteMes) {
+    // El mes actual → activar "Este mes"
+    currentStatsPeriod = "mes";
+  } else {
+    // Otro mes → usar "rango" abarcando todo ese mes
+    currentStatsPeriod = "rango";
+    const ini = `${year}-${String(month + 1).padStart(2,"0")}-01`;
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    const fin = `${year}-${String(month + 1).padStart(2,"0")}-${String(lastDay).padStart(2,"0")}`;
+    const desdeEl = document.getElementById("stats-desde");
+    const hastaEl = document.getElementById("stats-hasta");
+    if (desdeEl) desdeEl.value = ini;
+    if (hastaEl) hastaEl.value = fin;
+  }
+
+  // Actualizar botones visualmente
+  document.querySelectorAll(".sp-btn").forEach(b => b.classList.remove("active"));
+  if (esEsteMes) {
+    document.getElementById("sp-mes")?.classList.add("active");
+    document.getElementById("stats-rango-wrap").style.display = "none";
+  } else {
+    document.getElementById("sp-rango")?.classList.add("active");
+    document.getElementById("stats-rango-wrap").style.display = "block";
+  }
+}
+
+/* ── GRÁFICA ── */
+function dibujarGrafica(diasOrdenados) {
+  const canvas = document.getElementById("chart-produccion");
+  if (!canvas) return;
+
+  const labels = diasOrdenados.map(([k]) => {
+    const [d, m] = k.split("/");
+    return `${d}/${m}`;
+  });
+  const valores = diasOrdenados.map(([, v]) => v);
+
+  // Calcular tendencia
+  const n = valores.length;
+  let trend = "estable";
+  if (n >= 3) {
+    const mitad    = Math.floor(n / 2);
+    const primera  = valores.slice(0, mitad).reduce((a, b) => a + b, 0) / mitad;
+    const segunda  = valores.slice(n - mitad).reduce((a, b) => a + b, 0) / mitad;
+    if (segunda > primera * 1.1)      trend = "subiendo";
+    else if (segunda < primera * 0.9) trend = "bajando";
+  }
+
+  const trendConfig = {
+    subiendo: { icon: "📈", label: "Producción en tendencia ascendente", color: "#10b981" },
+    bajando:  { icon: "📉", label: "Producción en tendencia descendente", color: "#ef4444" },
+    estable:  { icon: "➡️", label: "Producción estable", color: "#007bc3" },
+  };
+  const tc = trendConfig[trend];
+  const trendEl = document.getElementById("chart-trend");
+  if (trendEl) trendEl.innerHTML = `<span class="trend-badge" style="border-color:${tc.color};color:${tc.color}">${tc.icon} ${tc.label}</span>`;
+
+  // Destruir gráfica previa si existe
+  if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+
+  const ctx = canvas.getContext("2d");
+  chartInstance = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "Leads por día",
+        data: valores,
+        borderColor: "#005fcc",
+        backgroundColor: "rgba(0,95,204,0.10)",
+        borderWidth: 2.5,
+        pointBackgroundColor: "#005fcc",
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        fill: true,
+        tension: 0.35,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.raw} lead${ctx.raw !== 1 ? "s" : ""}`,
+          },
+        },
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { stepSize: 1, font: { family: "Outfit", size: 12 } },
+          grid: { color: "rgba(0,0,0,0.06)" },
+        },
+        x: {
+          ticks: { font: { family: "Outfit", size: 11 } },
+          grid: { display: false },
+        },
+      },
+    },
+  });
+}

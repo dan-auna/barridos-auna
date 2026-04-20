@@ -208,13 +208,72 @@ function mostrarPantallaFormulario(user) {
 ══════════════════════════════════════════════ */
 function logout() {
   borrarSesion();
+
+  // ── Resetear todo el estado en memoria ──
+  allLeads           = [];
+  currentPage        = 1;
+  activeQuickFilter  = "todos";
+  currentStatsPeriod = "mes";
+  calMesAsesor       = null;
+  exportPeriod       = "todos";
+  if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+  if (qrInstance)    { qrInstance = null; }
+  cot_initialised    = false;
+  cot_modoPanel      = "asesor";
+  cot_currentInt     = 1;
+  cot_modoActuarial  = false;
+  proy_filasCount    = 0;
+
+  // ── Resetear UI de registros al estado inicial ──
+  const tablaEl = document.getElementById("tabla-registros");
+  if (tablaEl) tablaEl.innerHTML = `
+    <div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+      <p>Haz clic en <strong>Actualizar</strong> para cargar tus registros.</p>
+    </div>`;
+  const recordsSub = document.getElementById("records-sub");
+  if (recordsSub) recordsSub.textContent = "Historial de leads registrados";
+
+  // ── Ocultar controles de admin ──
+  const wrapAsesor = document.getElementById("wrap-filtro-asesor");
+  const btnStats   = document.getElementById("btn-ir-stats");
+  const wrapStats  = document.getElementById("wrap-stats-asesor");
+  if (wrapAsesor) wrapAsesor.style.display = "none";
+  if (btnStats)   btnStats.style.display   = "none";
+  if (wrapStats)  wrapStats.style.display  = "none";
+
+  // ── Volver a vista lista si estaba en stats ──
+  const vistaLista = document.getElementById("vista-lista");
+  const vistaStats = document.getElementById("vista-stats");
+  if (vistaLista) vistaLista.style.display = "block";
+  if (vistaStats) vistaStats.style.display = "none";
+
+  // ── Resetear filtros rápidos ──
+  document.querySelectorAll(".qf-btn").forEach((b, i) => b.classList.toggle("active", i === 0));
+  const rangoWrap = document.getElementById("rango-wrap");
+  if (rangoWrap) rangoWrap.style.display = "none";
+  const searchInput = document.getElementById("search-input");
+  if (searchInput) searchInput.value = "";
+  const fechaDesde = document.getElementById("fecha-desde");
+  const fechaHasta = document.getElementById("fecha-hasta");
+  if (fechaDesde) fechaDesde.value = "";
+  if (fechaHasta) fechaHasta.value = "";
+  const filtroAsesor = document.getElementById("filtro-asesor");
+  if (filtroAsesor) { filtroAsesor.innerHTML = `<option value="todos">Todos los asesores</option>`; }
+
+  // ── Volver a tab Nuevo Lead ──
+  document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+  document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+  document.getElementById("tab-form")?.classList.add("active");
+  document.getElementById("panel-form")?.classList.add("active");
+
+  // ── Reset formulario y pantalla ──
   document.getElementById("form-section").style.display  = "none";
   document.getElementById("login-section").style.display = "block";
   document.getElementById("username").value = "";
   document.getElementById("password").value = "";
   document.getElementById("login-error").style.display = "none";
   document.getElementById("barrido-form").reset();
-  allLeads = [];
 }
 
 /* ══════════════════════════════════════════════
@@ -227,10 +286,47 @@ function switchTab(tab) {
   document.getElementById(`tab-${tab}`).classList.add("active");
   document.getElementById(`panel-${tab}`).classList.add("active");
 
-  if (tab === "records")  verRegistros();
-  if (tab === "encuesta") iniciarEncuesta();
-  if (tab === "cotizador") cot_init();
+  if (tab === "records")    verRegistros();
+  if (tab === "encuesta")   iniciarEncuesta();
+  if (tab === "cotizador")  { cot_init(); requestAnimationFrame(() => requestAnimationFrame(cot_ajustarEscala)); }
+  if (tab === "proyeccion") proy_init();
+
+  // Sync mobile nav
+  const labels = {
+    form:       { label: "Nuevo Lead",    svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>` },
+    records:    { label: "Mis Registros", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H5a2 2 0 0 0-2 2v2h18v-2a2 2 0 0 0-2-2h-4"/><path d="M12 3v10m-4-4 4 4 4-4"/></svg>` },
+    encuesta:   { label: "Encuesta",      svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>` },
+    cotizador:  { label: "Cotizador",     svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>` },
+    proyeccion: { label: "Proyección",    svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>` },
+  };
+  const info = labels[tab];
+  if (info) {
+    document.getElementById("mobile-nav-label").textContent = info.label;
+    document.getElementById("mobile-nav-icon").innerHTML    = info.svg;
+  }
+  document.querySelectorAll(".mobile-nav-item").forEach(b => b.classList.remove("active"));
+  document.getElementById(`mnav-${tab}`)?.classList.add("active");
 }
+
+/* ── Mobile nav ── */
+function toggleMobileNav() {
+  const menu    = document.getElementById("mobile-nav-menu");
+  const chevron = document.getElementById("mobile-nav-chevron");
+  const open    = menu.style.display !== "none" && menu.style.display !== "";
+  menu.style.display = open ? "none" : "block";
+  chevron.style.transform = open ? "" : "rotate(180deg)";
+}
+
+function closeMobileNav() {
+  document.getElementById("mobile-nav-menu").style.display = "none";
+  document.getElementById("mobile-nav-chevron").style.transform = "";
+}
+
+// Close mobile nav on outside click
+document.addEventListener("click", e => {
+  const nav = document.getElementById("mobile-nav");
+  if (nav && !nav.contains(e.target)) closeMobileNav();
+});
 
 /* ══════════════════════════════════════════════
    VALIDACIÓN
@@ -314,6 +410,13 @@ document.getElementById("barrido-form").addEventListener("submit", async functio
       body:   JSON.stringify(datos),
     });
 
+    // Guardar datos del lead recién registrado para usarlos en el modal de WhatsApp
+    window._ultimoLead = {
+      nombre:   datos.nombre,
+      telefono: String(datos.telefono),
+      producto: datos.producto,
+    };
+
     this.reset();
     showToast();
 
@@ -321,6 +424,9 @@ document.getElementById("barrido-form").addEventListener("submit", async functio
     ["nombre", "telefono", "edad", "producto", "temperatura"].forEach((id) => {
       document.getElementById(id)?.classList.remove("invalid");
     });
+
+    // Abrir el modal de WhatsApp
+    abrirWaModal(window._ultimoLead);
 
   } catch (error) {
     alert("Error al guardar. Verifica tu conexión e intenta de nuevo.");
@@ -1715,82 +1821,171 @@ function dibujarGrafica(diasOrdenados) {
 /* ══════════════════════════════════════════════
    COTIZADOR — lógica completa (prefijo cot_)
 ══════════════════════════════════════════════ */
-const COT_TARIFARIO = [
- { plan: "Plan Auna salud Classic", rango: [0, 17], reg: 130.3, prom: 84.68 },
-            { plan: "Plan Auna salud Classic", rango: [18, 25], reg: 154.72, prom: 100.55 },
-            { plan: "Plan Auna salud Classic", rango: [26, 35], reg: 172.63, prom: 112.19 },
-            { plan: "Plan Auna salud Classic", rango: [36, 40], reg: 192.19, prom: 124.9 },
-            { plan: "Plan Auna salud Classic", rango: [41, 45], reg: 254.08, prom: 165.13 },
-            { plan: "Plan Auna salud Classic", rango: [46, 50], reg: 298.02, prom: 193.69 },
-            { plan: "Plan Auna salud Classic", rango: [51, 55], reg: 387.61, prom: 251.91 },
-            { plan: "Plan Auna salud Classic", rango: [56, 60], reg: 464.15, prom: 301.66 },
-            { plan: "Plan Auna salud Premium", rango: [0, 17], reg: 234.3, prom: 140.56 },
-            { plan: "Plan Auna salud Premium", rango: [18, 25], reg: 279.58, prom: 167.71 },
-            { plan: "Plan Auna salud Premium", rango: [26, 35], reg: 311.89, prom: 187.1 },
-            { plan: "Plan Auna salud Premium", rango: [36, 40], reg: 347.46, prom: 208.45 },
-            { plan: "Plan Auna salud Premium", rango: [41, 45], reg: 457.36, prom: 274.37 },
-            { plan: "Plan Auna salud Premium", rango: [46, 50], reg: 538.16, prom: 322.85 },
-            { plan: "Plan Auna salud Premium", rango: [51, 55], reg: 630.3, prom: 378.12 },
-            { plan: "Plan Auna salud Premium", rango: [56, 60], reg: 678.77, prom: 407.19 },
-            { plan: "Plan Auna salud Senior", rango: [61, 65], reg: 707.17, prom: 494.95 },
-            { plan: "Plan Auna salud Senior", rango: [66, 70], reg: 858.24, prom: 600.68 },
-            { plan: "Plan Auna salud Senior", rango: [71, 75], reg: 983.6, prom: 688.42 },
-            { plan: "Plan Auna salud Senior", rango: [76, 80], reg: 1129.85, prom: 790.78 },
-            { plan: "Plan Auna salud Senior", rango: [81, 120], reg: 1314.66, prom: 920.13 },
-            { plan: "Onco Pro", rango: [0, 17], reg: 43.91, prom: 35.12 },
-            { plan: "Onco Pro", rango: [18, 25], reg: 47.03, prom: 37.62 },
-            { plan: "Onco Pro", rango: [26, 26], reg: 78.92, prom: 39.45 },
-            { plan: "Onco Pro", rango: [27, 35], reg: 90.38, prom: 45.18 },
-            { plan: "Onco Pro", rango: [36, 40], reg: 92.26, prom: 46.13 },
-            { plan: "Onco Pro", rango: [41, 41], reg: 99.82, prom: 49.9 },
-            { plan: "Onco Pro", rango: [42, 43], reg: 102.7, prom: 51.34 },
-            { plan: "Onco Pro", rango: [44, 45], reg: 104.58, prom: 52.29 },
-            { plan: "Onco Pro", rango: [46, 46], reg: 112.29, prom: 56.13 },
-            { plan: "Onco Pro", rango: [47, 47], reg: 113.75, prom: 56.86 },
-            { plan: "Onco Pro", rango: [48, 48], reg: 115.04, prom: 57.51 },
-            { plan: "Onco Pro", rango: [49, 49], reg: 120.53, prom: 60.25 },
-            { plan: "Onco Pro", rango: [50, 50], reg: 130.1, prom: 65.03 },
-            { plan: "Onco Pro", rango: [51, 51], reg: 141.12, prom: 70.54 },
-            { plan: "Onco Pro", rango: [52, 52], reg: 156.85, prom: 78.41 },
-            { plan: "Onco Pro", rango: [53, 53], reg: 169.01, prom: 84.49 },
-            { plan: "Onco Pro", rango: [54, 54], reg: 176.41, prom: 88.19 },
-            { plan: "Onco Pro", rango: [55, 55], reg: 186.44, prom: 93.2 },
-            { plan: "Onco Pro", rango: [56, 56], reg: 192.19, prom: 96.08 },
-            { plan: "Onco Pro", rango: [57, 57], reg: 205.9, prom: 102.93 },
-            { plan: "Onco Pro", rango: [58, 58], reg: 215.63, prom: 107.79 },
-            { plan: "Onco Pro", rango: [59, 59], reg: 229.73, prom: 114.85 },
-            { plan: "Onco Pro", rango: [60, 60], reg: 243.13, prom: 121.54 },
-            { plan: "Onco Pro", rango: [61, 61], reg: 256.98, prom: 128.47 },
-            { plan: "Onco Plus", rango: [0, 17], reg: 53.58, prom: 42.86 },
-            { plan: "Onco Plus", rango: [18, 25], reg: 57.55, prom: 46.03 },
-            { plan: "Onco Plus", rango: [26, 26], reg: 131.72, prom: 65.84 },
-            { plan: "Onco Plus", rango: [27, 35], reg: 153.99, prom: 76.98 },
-            { plan: "Onco Plus", rango: [36, 36], reg: 160.49, prom: 80.23 },
-            { plan: "Onco Plus", rango: [37, 37], reg: 165.38, prom: 82.67 },
-            { plan: "Onco Plus", rango: [38, 38], reg: 166.97, prom: 83.47 },
-            { plan: "Onco Plus", rango: [39, 39], reg: 169.01, prom: 84.49 },
-            { plan: "Onco Plus", rango: [40, 40], reg: 171.3, prom: 85.63 },
-            { plan: "Onco Plus", rango: [41, 41], reg: 175.43, prom: 87.7 },
-            { plan: "Onco Plus", rango: [42, 42], reg: 178.48, prom: 89.22 },
-            { plan: "Onco Plus", rango: [43, 43], reg: 186, prom: 92.98 },
-            { plan: "Onco Plus", rango: [44, 44], reg: 188.52, prom: 94.23 },
-            { plan: "Onco Plus", rango: [45, 45], reg: 193.85, prom: 96.9 },
-            { plan: "Onco Plus", rango: [46, 46], reg: 201.98, prom: 100.97 },
-            { plan: "Onco Plus", rango: [47, 47], reg: 208.23, prom: 104.1 },
-            { plan: "Onco Plus", rango: [48, 48], reg: 215.93, prom: 107.95 },
-            { plan: "Onco Plus", rango: [49, 49], reg: 220.58, prom: 110.27 },
-            { plan: "Onco Plus", rango: [50, 50], reg: 234.15, prom: 117.06 },
-            { plan: "Onco Plus", rango: [51, 51], reg: 235.96, prom: 117.96 },
-            { plan: "Onco Plus", rango: [52, 52], reg: 243.14, prom: 121.54 },
-            { plan: "Onco Plus", rango: [53, 53], reg: 247.21, prom: 123.58 },
-            { plan: "Onco Plus", rango: [54, 54], reg: 250.51, prom: 125.23 },
-            { plan: "Onco Plus", rango: [55, 55], reg: 261.42, prom: 130.69 },
-            { plan: "Onco Plus", rango: [56, 56], reg: 276.39, prom: 138.17 },
-            { plan: "Onco Plus", rango: [57, 57], reg: 287.44, prom: 143.69 },
-            { plan: "Onco Plus", rango: [58, 58], reg: 306.17, prom: 153.06 },
-            { plan: "Onco Plus", rango: [59, 59], reg: 321.77, prom: 160.86 },
-            { plan: "Onco Plus", rango: [60, 60], reg: 337.16, prom: 168.55 },
+// ─────────────────────────────────────────────
+//  LISTA 1 — 1 integrante
+// ─────────────────────────────────────────────
+const COT_LISTA1 = [
+  { plan:"Plan Auna salud Classic", rango:[0,17],   reg:130.3,   prom:84.68 },
+  { plan:"Plan Auna salud Classic", rango:[18,25],  reg:154.72,  prom:100.55 },
+  { plan:"Plan Auna salud Classic", rango:[26,35],  reg:172.63,  prom:112.19 },
+  { plan:"Plan Auna salud Classic", rango:[36,40],  reg:192.19,  prom:124.9 },
+  { plan:"Plan Auna salud Classic", rango:[41,45],  reg:254.08,  prom:165.13 },
+  { plan:"Plan Auna salud Classic", rango:[46,50],  reg:298.02,  prom:193.69 },
+  { plan:"Plan Auna salud Classic", rango:[51,55],  reg:387.61,  prom:251.91 },
+  { plan:"Plan Auna salud Classic", rango:[56,60],  reg:464.15,  prom:301.66 },
+  { plan:"Plan Auna salud Premium", rango:[0,17],   reg:234.3,   prom:140.56 },
+  { plan:"Plan Auna salud Premium", rango:[18,25],  reg:279.58,  prom:167.71 },
+  { plan:"Plan Auna salud Premium", rango:[26,35],  reg:311.89,  prom:187.1 },
+  { plan:"Plan Auna salud Premium", rango:[36,40],  reg:347.46,  prom:208.45 },
+  { plan:"Plan Auna salud Premium", rango:[41,45],  reg:457.36,  prom:274.37 },
+  { plan:"Plan Auna salud Premium", rango:[46,50],  reg:538.16,  prom:322.85 },
+  { plan:"Plan Auna salud Premium", rango:[51,55],  reg:630.3,   prom:378.12 },
+  { plan:"Plan Auna salud Premium", rango:[56,60],  reg:678.77,  prom:407.19 },
+  { plan:"Plan Auna salud Senior",  rango:[61,65],  reg:707.17,  prom:494.95 },
+  { plan:"Plan Auna salud Senior",  rango:[66,70],  reg:858.24,  prom:600.68 },
+  { plan:"Plan Auna salud Senior",  rango:[71,75],  reg:983.6,   prom:688.42 },
+  { plan:"Plan Auna salud Senior",  rango:[76,80],  reg:1129.85, prom:790.78 },
+  { plan:"Plan Auna salud Senior",  rango:[81,120], reg:1314.66, prom:920.13 },
+  { plan:"Onco Pro", rango:[0,17],   reg:43.91,  prom:35.12 },
+  { plan:"Onco Pro", rango:[18,25],  reg:47.03,  prom:37.62 },
+  { plan:"Onco Pro", rango:[26,26],  reg:78.92,  prom:39.45 },
+  { plan:"Onco Pro", rango:[27,35],  reg:90.38,  prom:45.18 },
+  { plan:"Onco Pro", rango:[36,40],  reg:92.26,  prom:46.13 },
+  { plan:"Onco Pro", rango:[41,41],  reg:99.82,  prom:49.9 },
+  { plan:"Onco Pro", rango:[42,43],  reg:102.7,  prom:51.34 },
+  { plan:"Onco Pro", rango:[44,45],  reg:104.58, prom:52.29 },
+  { plan:"Onco Pro", rango:[46,46],  reg:112.29, prom:56.13 },
+  { plan:"Onco Pro", rango:[47,47],  reg:113.75, prom:56.86 },
+  { plan:"Onco Pro", rango:[48,48],  reg:115.04, prom:57.51 },
+  { plan:"Onco Pro", rango:[49,49],  reg:120.53, prom:60.25 },
+  { plan:"Onco Pro", rango:[50,50],  reg:130.1,  prom:65.03 },
+  { plan:"Onco Pro", rango:[51,51],  reg:141.12, prom:70.54 },
+  { plan:"Onco Pro", rango:[52,52],  reg:156.85, prom:78.41 },
+  { plan:"Onco Pro", rango:[53,53],  reg:169.01, prom:84.49 },
+  { plan:"Onco Pro", rango:[54,54],  reg:176.41, prom:88.19 },
+  { plan:"Onco Pro", rango:[55,55],  reg:186.44, prom:93.2 },
+  { plan:"Onco Pro", rango:[56,56],  reg:192.19, prom:96.08 },
+  { plan:"Onco Pro", rango:[57,57],  reg:205.9,  prom:102.93 },
+  { plan:"Onco Pro", rango:[58,58],  reg:215.63, prom:107.79 },
+  { plan:"Onco Pro", rango:[59,59],  reg:229.73, prom:114.85 },
+  { plan:"Onco Pro", rango:[60,60],  reg:243.13, prom:121.54 },
+  { plan:"Onco Pro", rango:[61,61],  reg:256.98, prom:128.47 },
+  { plan:"Onco Plus", rango:[0,17],   reg:53.58,  prom:42.86 },
+  { plan:"Onco Plus", rango:[18,25],  reg:57.55,  prom:46.03 },
+  { plan:"Onco Plus", rango:[26,26],  reg:131.72, prom:65.84 },
+  { plan:"Onco Plus", rango:[27,35],  reg:153.99, prom:76.98 },
+  { plan:"Onco Plus", rango:[36,36],  reg:160.49, prom:80.23 },
+  { plan:"Onco Plus", rango:[37,37],  reg:165.38, prom:82.67 },
+  { plan:"Onco Plus", rango:[38,38],  reg:166.97, prom:83.47 },
+  { plan:"Onco Plus", rango:[39,39],  reg:169.01, prom:84.49 },
+  { plan:"Onco Plus", rango:[40,40],  reg:171.3,  prom:85.63 },
+  { plan:"Onco Plus", rango:[41,41],  reg:175.43, prom:87.7 },
+  { plan:"Onco Plus", rango:[42,42],  reg:178.48, prom:89.22 },
+  { plan:"Onco Plus", rango:[43,43],  reg:186,    prom:92.98 },
+  { plan:"Onco Plus", rango:[44,44],  reg:188.52, prom:94.23 },
+  { plan:"Onco Plus", rango:[45,45],  reg:193.85, prom:96.9 },
+  { plan:"Onco Plus", rango:[46,46],  reg:201.98, prom:100.97 },
+  { plan:"Onco Plus", rango:[47,47],  reg:208.23, prom:104.1 },
+  { plan:"Onco Plus", rango:[48,48],  reg:215.93, prom:107.95 },
+  { plan:"Onco Plus", rango:[49,49],  reg:220.58, prom:110.27 },
+  { plan:"Onco Plus", rango:[50,50],  reg:234.15, prom:117.06 },
+  { plan:"Onco Plus", rango:[51,51],  reg:235.96, prom:117.96 },
+  { plan:"Onco Plus", rango:[52,52],  reg:243.14, prom:121.54 },
+  { plan:"Onco Plus", rango:[53,53],  reg:247.21, prom:123.58 },
+  { plan:"Onco Plus", rango:[54,54],  reg:250.51, prom:125.23 },
+  { plan:"Onco Plus", rango:[55,55],  reg:261.42, prom:130.69 },
+  { plan:"Onco Plus", rango:[56,56],  reg:276.39, prom:138.17 },
+  { plan:"Onco Plus", rango:[57,57],  reg:287.44, prom:143.69 },
+  { plan:"Onco Plus", rango:[58,58],  reg:306.17, prom:153.06 },
+  { plan:"Onco Plus", rango:[59,59],  reg:321.77, prom:160.86 },
+  { plan:"Onco Plus", rango:[60,60],  reg:337.16, prom:168.55 },
 ];
+
+// ─────────────────────────────────────────────
+//  LISTA 2 — 2, 3 o 4 integrantes
+// ─────────────────────────────────────────────
+const COT_LISTA2 = [
+  { plan:"Plan Auna salud Classic", rango:[0,17],   reg:130.3,   prom:84.68 },
+  { plan:"Plan Auna salud Classic", rango:[18,25],  reg:154.72,  prom:100.55 },
+  { plan:"Plan Auna salud Classic", rango:[26,35],  reg:172.63,  prom:112.19 },
+  { plan:"Plan Auna salud Classic", rango:[36,40],  reg:192.19,  prom:124.9 },
+  { plan:"Plan Auna salud Classic", rango:[41,45],  reg:254.08,  prom:165.13 },
+  { plan:"Plan Auna salud Classic", rango:[46,50],  reg:298.02,  prom:193.69 },
+  { plan:"Plan Auna salud Classic", rango:[51,55],  reg:387.61,  prom:251.91 },
+  { plan:"Plan Auna salud Classic", rango:[56,60],  reg:464.15,  prom:301.66 },
+  { plan:"Plan Auna salud Premium", rango:[0,17],   reg:234.3,   prom:140.56 },
+  { plan:"Plan Auna salud Premium", rango:[18,25],  reg:279.58,  prom:167.71 },
+  { plan:"Plan Auna salud Premium", rango:[26,35],  reg:311.89,  prom:187.1 },
+  { plan:"Plan Auna salud Premium", rango:[36,40],  reg:347.46,  prom:208.45 },
+  { plan:"Plan Auna salud Premium", rango:[41,45],  reg:457.36,  prom:274.37 },
+  { plan:"Plan Auna salud Premium", rango:[46,50],  reg:538.16,  prom:322.85 },
+  { plan:"Plan Auna salud Premium", rango:[51,55],  reg:630.3,   prom:378.12 },
+  { plan:"Plan Auna salud Premium", rango:[56,60],  reg:678.77,  prom:407.19 },
+  { plan:"Plan Auna salud Senior",  rango:[61,65],  reg:707.17,  prom:494.95 },
+  { plan:"Plan Auna salud Senior",  rango:[66,70],  reg:858.24,  prom:600.68 },
+  { plan:"Plan Auna salud Senior",  rango:[71,75],  reg:983.6,   prom:688.42 },
+  { plan:"Plan Auna salud Senior",  rango:[76,80],  reg:1129.85, prom:790.78 },
+  { plan:"Plan Auna salud Senior",  rango:[81,120], reg:1314.66, prom:920.13 },
+  { plan:"Onco Pro", rango:[0,17],   reg:43.91,  prom:35.12 },
+  { plan:"Onco Pro", rango:[18,25],  reg:47.03,  prom:37.62 },
+  { plan:"Onco Pro", rango:[26,26],  reg:78.92,  prom:39.45 },
+  { plan:"Onco Pro", rango:[27,35],  reg:90.38,  prom:45.18 },
+  { plan:"Onco Pro", rango:[36,40],  reg:92.26,  prom:46.13 },
+  { plan:"Onco Pro", rango:[41,41],  reg:99.82,  prom:49.9 },
+  { plan:"Onco Pro", rango:[42,43],  reg:102.7,  prom:51.34 },
+  { plan:"Onco Pro", rango:[44,45],  reg:104.58, prom:52.29 },
+  { plan:"Onco Pro", rango:[46,46],  reg:112.29, prom:56.13 },
+  { plan:"Onco Pro", rango:[47,47],  reg:113.75, prom:56.86 },
+  { plan:"Onco Pro", rango:[48,48],  reg:115.04, prom:57.51 },
+  { plan:"Onco Pro", rango:[49,49],  reg:120.53, prom:60.25 },
+  { plan:"Onco Pro", rango:[50,50],  reg:130.1,  prom:65.03 },
+  { plan:"Onco Pro", rango:[51,51],  reg:141.12, prom:70.54 },
+  { plan:"Onco Pro", rango:[52,52],  reg:156.85, prom:78.41 },
+  { plan:"Onco Pro", rango:[53,53],  reg:169.01, prom:84.49 },
+  { plan:"Onco Pro", rango:[54,54],  reg:176.41, prom:88.19 },
+  { plan:"Onco Pro", rango:[55,55],  reg:186.44, prom:93.2 },
+  { plan:"Onco Pro", rango:[56,56],  reg:192.19, prom:96.08 },
+  { plan:"Onco Pro", rango:[57,57],  reg:205.9,  prom:102.93 },
+  { plan:"Onco Pro", rango:[58,58],  reg:215.63, prom:107.79 },
+  { plan:"Onco Pro", rango:[59,59],  reg:229.73, prom:114.85 },
+  { plan:"Onco Pro", rango:[60,60],  reg:243.13, prom:121.54 },
+  { plan:"Onco Pro", rango:[61,61],  reg:256.98, prom:128.47 },
+  { plan:"Onco Plus", rango:[0,17],   reg:53.58,  prom:42.86 },
+  { plan:"Onco Plus", rango:[18,25],  reg:57.55,  prom:46.03 },
+  { plan:"Onco Plus", rango:[26,26],  reg:131.72, prom:65.84 },
+  { plan:"Onco Plus", rango:[27,35],  reg:153.99, prom:76.98 },
+  { plan:"Onco Plus", rango:[36,36],  reg:160.49, prom:80.23 },
+  { plan:"Onco Plus", rango:[37,37],  reg:165.38, prom:82.67 },
+  { plan:"Onco Plus", rango:[38,38],  reg:166.97, prom:83.47 },
+  { plan:"Onco Plus", rango:[39,39],  reg:169.01, prom:84.49 },
+  { plan:"Onco Plus", rango:[40,40],  reg:171.3,  prom:85.63 },
+  { plan:"Onco Plus", rango:[41,41],  reg:175.43, prom:87.7 },
+  { plan:"Onco Plus", rango:[42,42],  reg:178.48, prom:89.22 },
+  { plan:"Onco Plus", rango:[43,43],  reg:186,    prom:92.98 },
+  { plan:"Onco Plus", rango:[44,44],  reg:188.52, prom:94.23 },
+  { plan:"Onco Plus", rango:[45,45],  reg:193.85, prom:96.9 },
+  { plan:"Onco Plus", rango:[46,46],  reg:201.98, prom:100.97 },
+  { plan:"Onco Plus", rango:[47,47],  reg:208.23, prom:104.1 },
+  { plan:"Onco Plus", rango:[48,48],  reg:215.93, prom:107.95 },
+  { plan:"Onco Plus", rango:[49,49],  reg:220.58, prom:110.27 },
+  { plan:"Onco Plus", rango:[50,50],  reg:234.15, prom:117.06 },
+  { plan:"Onco Plus", rango:[51,51],  reg:235.96, prom:117.96 },
+  { plan:"Onco Plus", rango:[52,52],  reg:243.14, prom:121.54 },
+  { plan:"Onco Plus", rango:[53,53],  reg:247.21, prom:123.58 },
+  { plan:"Onco Plus", rango:[54,54],  reg:250.51, prom:125.23 },
+  { plan:"Onco Plus", rango:[55,55],  reg:261.42, prom:130.69 },
+  { plan:"Onco Plus", rango:[56,56],  reg:276.39, prom:138.17 },
+  { plan:"Onco Plus", rango:[57,57],  reg:287.44, prom:143.69 },
+  { plan:"Onco Plus", rango:[58,58],  reg:306.17, prom:153.06 },
+  { plan:"Onco Plus", rango:[59,59],  reg:321.77, prom:160.86 },
+  { plan:"Onco Plus", rango:[60,60],  reg:337.16, prom:168.55 },
+];
+
+// Devuelve la lista correcta según cantidad de integrantes
+function cot_getTarifario() {
+  return cot_currentInt === 1 ? COT_LISTA1 : COT_LISTA2;
+}
+
 
 let cot_modoPanel     = "asesor";
 let cot_currentInt    = 1;
@@ -1803,6 +1998,36 @@ function cot_init() {
   const hoy = new Date().toISOString().split("T")[0];
   document.getElementById("cot_fechaLimite").value = hoy;
   cot_renderizarCampos();
+  cot_ajustarEscala();
+  window.addEventListener("resize", cot_ajustarEscala);
+}
+
+// Calcula la escala para que la tarjeta quepa completa en pantalla sin scroll
+function cot_ajustarEscala() {
+  const wrap   = document.querySelector(".cot-preview-wrap");
+  const scaler = document.querySelector(".cot-preview-scaler");
+  const card   = document.getElementById("cot_cotizacion-final");
+  if (!wrap || !scaler || !card) return;
+
+  // Medir el tamaño real de la tarjeta (1080px ancho, alto variable según contenido)
+  const cardH = card.scrollHeight || 1400;
+  const cardW = 1080;
+
+  const anchoDisponible  = wrap.clientWidth  || 400;
+  // Altura disponible: viewport menos navbar (~64px) y padding (~32px)
+  const alturaDisponible = (window.innerHeight - 64 - 32) || 500;
+
+  const escalaPorAncho  = anchoDisponible  / cardW;
+  const escalaPorAltura = alturaDisponible / cardH;
+  const escala = Math.min(escalaPorAncho, escalaPorAltura, 1);
+
+  scaler.style.transform       = `scale(${escala})`;
+  scaler.style.transformOrigin = "top center";
+
+  // Fijar la altura del wrapper al espacio visual real que ocupa la tarjeta escalada
+  const alturaReal = Math.round(cardH * escala);
+  wrap.style.height   = alturaReal + "px";
+  wrap.style.overflow = "hidden";
 }
 
 function cot_calcularEdadActuarial(fechaNac) {
@@ -1865,9 +2090,14 @@ function cot_seleccionarModo(modo) {
 function cot_cambiarIntegrantes(delta) {
   const nuevo = cot_currentInt + delta;
   if (nuevo < 1 || nuevo > 4) return;
+  const antes = cot_currentInt;
   cot_currentInt = nuevo;
   document.getElementById("cot_contadorDisplay").textContent = cot_currentInt;
   cot_renderizarCampos();
+  // Si el cambio cruzó la frontera 1 ↔ 2, recalcular todos los precios
+  if ((antes === 1 && nuevo > 1) || (antes > 1 && nuevo === 1)) {
+    for (let i = 1; i <= cot_currentInt; i++) cot_autocompletarPrecios(i);
+  }
 }
 
 function cot_renderizarCampos() {
@@ -1968,7 +2198,7 @@ function cot_autocompletarPrecios(id) {
   }
 
   if (valid) {
-    const match = COT_TARIFARIO.find(t => t.plan === plan && edad >= t.rango[0] && edad <= t.rango[1]);
+    const match = cot_getTarifario().find(t => t.plan === plan && edad >= t.rango[0] && edad <= t.rango[1]);
     regEl.value  = match ? match.reg.toFixed(2)  : "0.00";
     promEl.value = match ? match.prom.toFixed(2) : "0.00";
   } else {
@@ -2043,7 +2273,11 @@ function cot_actualizarPreview() {
   document.getElementById("cot_total-reg").textContent      = "S/ " + tR.toFixed(2);
   document.getElementById("cot_total-promo").textContent    = "S/ " + tP.toFixed(2);
   document.getElementById("cot_total-solo-reg").textContent = "S/ " + tR.toFixed(2);
+
+  // Re-ajustar escala porque el alto de la tarjeta puede haber cambiado
+  requestAnimationFrame(cot_ajustarEscala);
 }
+
 
 async function cot_exportarCotizacion(conDescuento) {
   const card          = document.getElementById("cot_cotizacion-final");
@@ -2074,7 +2308,10 @@ async function cot_exportarCotizacion(conDescuento) {
       return;
     }
     const dataUrl = await htmlToImage.toJpeg(card, {
-      quality: 0.95, pixelRatio: 2, width: 450, backgroundColor: "#ffffff",
+      quality: 0.95,
+      pixelRatio: 2,        // 2x para alta resolución (1080×auto → 2160×auto)
+      width:  1080,
+      backgroundColor: "#ffffff",
     });
     const link = document.createElement("a");
     link.download = conDescuento ? "Cotizacion_Promo.jpg" : "Cotizacion_Regular.jpg";
@@ -2107,3 +2344,533 @@ document.addEventListener("click", (e) => {
     if (chevron) chevron.style.transform = "";
   }
 });
+
+/* ══════════════════════════════════════════════
+   WHATSAPP MODAL
+══════════════════════════════════════════════ */
+let _waMensajeBase     = "";
+let _waMensajeAnterior = ""; // para cancelar edición
+
+async function abrirWaModal(lead) {
+  document.getElementById("wa-lead-info").textContent =
+    `${lead.nombre} · ${lead.producto} · +51 ${lead.telefono}`;
+
+  // Mostrar modal INMEDIATAMENTE con estado de carga
+  const overlay = document.getElementById("wa-modal-overlay");
+  overlay.style.display = "flex";
+  overlay.offsetHeight;
+  overlay.classList.add("active");
+  document.body.style.overflow = "hidden";
+
+  // Mostrar loading en la preview mientras carga el mensaje
+  const previewBox = document.getElementById("wa-preview-text");
+  previewBox.innerHTML = `<div class="wa-loading">
+    <span class="spinner" style="border-color:rgba(7,94,84,0.2);border-top-color:#075e54;width:20px;height:20px"></span>
+    <span style="color:#075e54;font-size:0.85rem;font-weight:600">Cargando mensaje...</span>
+  </div>`;
+
+  // Ocultar botón editar mientras carga
+  const btnEditar = document.querySelector(".wa-btn-editar");
+  if (btnEditar) btnEditar.style.visibility = "hidden";
+
+  // Cargar mensaje del usuario desde Sheets
+  const usuario = leerSesion()?.usuario || "";
+  try {
+    const res  = await fetch(`${URL_GOOGLE_SCRIPT}?action=getMensaje&usuario=${encodeURIComponent(usuario)}`);
+    const data = await res.json();
+    _waMensajeBase = data.mensaje || "";
+  } catch {
+    _waMensajeBase = "";
+  }
+
+  document.getElementById("wa-mensaje").value = _waMensajeBase;
+
+  // Mostrar botón editar ya con datos
+  if (btnEditar) btnEditar.style.visibility = "visible";
+
+  // Arrancar en modo vista previa (reemplaza el loading)
+  mostrarModoPreview();
+}
+
+function mostrarModoPreview() {
+  document.getElementById("wa-mode-preview").style.display = "block";
+  document.getElementById("wa-mode-edit").style.display    = "none";
+  actualizarPreviewWa();
+}
+
+function abrirModoEdicion() {
+  _waMensajeAnterior = document.getElementById("wa-mensaje").value; // guardar para cancelar
+  document.getElementById("wa-mode-preview").style.display = "none";
+  document.getElementById("wa-mode-edit").style.display    = "block";
+  document.getElementById("wa-mensaje").oninput = actualizarPreviewWa;
+  document.getElementById("wa-mensaje").focus();
+}
+
+function cancelarEdicion() {
+  document.getElementById("wa-mensaje").value = _waMensajeAnterior;
+  mostrarModoPreview();
+}
+
+function actualizarPreviewWa() {
+  const lead  = window._ultimoLead || {};
+  const texto = (document.getElementById("wa-mensaje")?.value || "")
+    .replace(/\{nombre\}/gi,   lead.nombre   || "")
+    .replace(/\{producto\}/gi, lead.producto || "");
+  document.getElementById("wa-preview-text").textContent = texto || "—";
+}
+
+function insertarVariable(variable) {
+  const ta  = document.getElementById("wa-mensaje");
+  const ini = ta.selectionStart;
+  const fin = ta.selectionEnd;
+  ta.value  = ta.value.slice(0, ini) + variable + ta.value.slice(fin);
+  ta.selectionStart = ta.selectionEnd = ini + variable.length;
+  ta.focus();
+  actualizarPreviewWa();
+}
+
+async function guardarMensajeWa() {
+  const btn    = document.getElementById("wa-btn-guardar");
+  const text   = btn.querySelector(".btn-text");
+  const loader = btn.querySelector(".btn-loader");
+  btn.disabled         = true;
+  text.style.display   = "none";
+  loader.style.display = "inline-flex";
+
+  const usuario  = leerSesion()?.usuario || "";
+  const mensaje  = document.getElementById("wa-mensaje").value;
+  _waMensajeBase = mensaje;
+
+  try {
+    await fetch(URL_GOOGLE_SCRIPT, {
+      method: "POST",
+      mode:   "no-cors",
+      body:   JSON.stringify({ action: "updateMensaje", usuario, mensaje }),
+    });
+    // Volver a modo preview tras guardar
+    mostrarModoPreview();
+  } catch {
+    alert("Error al guardar el mensaje. Intenta de nuevo.");
+  } finally {
+    btn.disabled         = false;
+    text.style.display   = "inline";
+    loader.style.display = "none";
+  }
+}
+
+function enviarWhatsapp() {
+  const lead     = window._ultimoLead || {};
+  const telefono = (lead.telefono || "").replace(/\D/g, "");
+  const numero   = "51" + telefono;
+
+  const mensaje = (document.getElementById("wa-mensaje")?.value || "")
+    .replace(/\{nombre\}/gi,   lead.nombre   || "")
+    .replace(/\{producto\}/gi, lead.producto || "");
+
+  if (!telefono) { alert("No se encontró el número de teléfono del lead."); return; }
+
+  window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`, "_blank");
+}
+
+function closeWaModal(event) {
+  if (event && event.target !== document.getElementById("wa-modal-overlay")) return;
+  const overlay = document.getElementById("wa-modal-overlay");
+  overlay.classList.remove("active");
+  setTimeout(() => {
+    overlay.style.display = "none";
+    document.body.style.overflow = "";
+  }, 250);
+}
+
+
+/* ══════════════════════════════════════════════
+   PROYECCIÓN
+══════════════════════════════════════════════ */
+let proy_filasCount = 0;
+
+// Fecha de hoy en Lima, solo fecha dd/mm/yyyy
+function proy_fechaHoyLima() {
+  const now   = new Date();
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Lima",
+    day: "2-digit", month: "2-digit", year: "numeric",
+  }).formatToParts(now);
+  const get = t => parts.find(p => p.type === t)?.value ?? "";
+  return `${get("day")}/${get("month")}/${get("year")}`;
+}
+
+// Hora en formato "h am/pm" compatible con Sheets
+function proy_parsearHora(str) {
+  if (!str) return "";
+  const m = str.trim().match(/^(\d{1,2})\s*(am|pm)$/i);
+  if (!m) return str;
+  let h = parseInt(m[1], 10);
+  const ap = m[2].toLowerCase();
+  if (ap === "pm" && h !== 12) h += 12;
+  if (ap === "am" && h === 12) h = 0;
+  // Devolver como string "HH:00" para que Sheets lo reconozca como hora
+  return `${String(h).padStart(2,"0")}:00`;
+}
+
+// Renderizar una fila de prospecto
+function proy_renderFila(idx, data = {}) {
+  const productos = ["Auna Classic","Auna Premium","Auna Senior","Onco Pro","Onco Plus"];
+  const estados   = ["Generado","Por Vencer","Pagado","Pendiente"];
+  const horas     = [
+    "1 am","2 am","3 am","4 am","5 am","6 am","7 am","8 am","9 am","10 am","11 am","12 pm",
+    "1 pm","2 pm","3 pm","4 pm","5 pm","6 pm","7 pm","8 pm","9 pm","10 pm","11 pm","12 am"
+  ];
+  const prodOpts  = productos.map(p => `<option value="${p}" ${data.producto===p?"selected":""}>${p}</option>`).join("");
+  const estadOpts = estados.map(s => `<option value="${s}" ${data.estado===s?"selected":""}>${s}</option>`).join("");
+  const densOpts  = [1,2,3,4].map(n => `<option value="${n}" ${data.densidad==n?"selected":""}>${n}</option>`).join("");
+  const horaOpts  = horas.map(h => `<option value="${h}" ${data.horaDisplay===h?"selected":""}>${h}</option>`).join("");
+
+  return `
+  <div class="proy-fila" id="proy-fila-${idx}">
+    <div class="proy-fila-header">
+      <span class="proy-fila-num">Prospecto ${idx}</span>
+      ${idx > 1 ? `<button type="button" class="proy-btn-remove" onclick="proy_eliminarFila(${idx})" title="Eliminar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>` : ""}
+    </div>
+    <div class="proy-fila-grid">
+      <div class="field-group">
+        <label class="field-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Nombre</label>
+        <input type="text" id="proy-nombre-${idx}" value="${data.nombre||""}" placeholder="Nombre del prospecto" class="proy-input">
+      </div>
+      <div class="field-group">
+        <label class="field-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> Densidad</label>
+        <div class="select-wrap"><select id="proy-densidad-${idx}" class="proy-select">${densOpts}</select>
+        <svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+      </div>
+      <div class="field-group">
+        <label class="field-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg> Producto</label>
+        <div class="select-wrap"><select id="proy-producto-${idx}" class="proy-select">${prodOpts}</select>
+        <svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+      </div>
+      <div class="field-group">
+        <label class="field-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Estado</label>
+        <div class="select-wrap"><select id="proy-estado-${idx}" class="proy-select">${estadOpts}</select>
+        <svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+      </div>
+      <div class="field-group">
+        <label class="field-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12"/></svg> Hora</label>
+        <div class="select-wrap"><select id="proy-hora-${idx}" class="proy-select">${horaOpts}</select>
+        <svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function proy_agregarFila(data = {}) {
+  proy_filasCount++;
+  const wrap = document.getElementById("proy-filas-wrap");
+  const div  = document.createElement("div");
+  div.innerHTML = proy_renderFila(proy_filasCount, data);
+  wrap.appendChild(div.firstElementChild);
+}
+
+function proy_eliminarFila(idx) {
+  const el = document.getElementById("proy-fila-" + idx);
+  if (el) el.remove();
+}
+
+function proy_leerFilas() {
+  const filas = [];
+  document.querySelectorAll(".proy-fila").forEach(fila => {
+    const id = fila.id.replace("proy-fila-","");
+    const horaDisplay = document.getElementById("proy-hora-" + id)?.value || "1 pm";
+    filas.push({
+      nombre:      document.getElementById("proy-nombre-"   + id)?.value.trim() || "",
+      densidad:    document.getElementById("proy-densidad-" + id)?.value || "1",
+      producto:    document.getElementById("proy-producto-" + id)?.value || "",
+      estado:      document.getElementById("proy-estado-"   + id)?.value || "",
+      hora:        proy_parsearHora(horaDisplay),
+      horaDisplay: horaDisplay,
+    });
+  });
+  return filas.filter(f => f.nombre);
+}
+
+async function proy_init() {
+  const rol     = leerSesion()?.rol;
+  const esAdmin = rol === "Administrador";
+
+  document.getElementById("proy-loading").style.display        = "block";
+  document.getElementById("proy-preview-view").style.display   = "none";
+  document.getElementById("proy-asesor-view").style.display    = "none";
+  document.getElementById("proy-admin-view").style.display     = "none";
+  document.getElementById("proy-header-asesor").style.display  = esAdmin ? "none" : "flex";
+  document.getElementById("proy-header-admin").style.display   = esAdmin ? "flex" : "none";
+
+  const hoy = proy_fechaHoyLima();
+  document.getElementById("proy-fecha-sub").textContent   = `Proyección para hoy — ${hoy}`;
+  document.getElementById("proy-admin-fecha").textContent = `Proyecciones del día — ${hoy}`;
+
+  try {
+    // Siempre traer proyecciones del día
+    const resProy = await fetch(`${URL_GOOGLE_SCRIPT}?action=getProyeccion&fecha=${encodeURIComponent(hoy)}`);
+    const data    = await resProy.json();
+
+    document.getElementById("proy-loading").style.display = "none";
+
+    if (esAdmin) {
+      // Admin también necesita la lista completa de asesores
+      let todosUsuarios = [];
+      try {
+        const resU = await fetch(`${URL_GOOGLE_SCRIPT}?action=getUsers`);
+        todosUsuarios = await resU.json();
+      } catch {}
+      document.getElementById("proy-admin-view").style.display = "block";
+      proy_renderAdmin(data, todosUsuarios);
+    } else {
+      const usuario  = leerSesion()?.usuario || "";
+      const misFilas = data.filter(f => (f.usuario||"").toLowerCase() === usuario.toLowerCase());
+
+      if (misFilas.length > 0) {
+        // Ya tiene proyección → mostrar vista previa
+        document.getElementById("proy-preview-view").style.display = "block";
+        proy_renderPreview(misFilas);
+        // Precargar el editor también (oculto) para cuando edite
+        proy_filasCount = 0;
+        document.getElementById("proy-filas-wrap").innerHTML = "";
+        misFilas.forEach(f => proy_agregarFila({ ...f }));
+      } else {
+        // Sin proyección → mostrar editor vacío
+        document.getElementById("proy-asesor-view").style.display = "block";
+        proy_filasCount = 0;
+        document.getElementById("proy-filas-wrap").innerHTML = "";
+        proy_agregarFila();
+      }
+    }
+  } catch {
+    document.getElementById("proy-loading").style.display = "none";
+    if (!esAdmin) {
+      document.getElementById("proy-asesor-view").style.display = "block";
+      proy_filasCount = 0;
+      document.getElementById("proy-filas-wrap").innerHTML = "";
+      proy_agregarFila();
+    }
+  }
+}
+
+// Mostrar vista previa de la proyección ya enviada
+function proy_renderPreview(filas) {
+  const total = filas.reduce((s, f) => s + (parseInt(f.densidad)||0), 0);
+  let html = `
+    <div class="proy-preview-kpi">
+      <div class="proy-preview-kpi-num">${total}</div>
+      <div class="proy-preview-kpi-label">unidad${total!==1?"es":""} proyectada${total!==1?"s":""} hoy</div>
+    </div>
+    <div style="overflow-x:auto">
+    <table class="data-table">
+      <thead><tr><th>Nombre</th><th>Densidad</th><th>Producto</th><th>Estado</th><th>Hora</th></tr></thead>
+      <tbody>
+        ${filas.map(f => `<tr>
+          <td style="font-weight:600">${f.nombre||"—"}</td>
+          <td style="text-align:center">${f.densidad||"—"}</td>
+          <td><span class="badge-product ${getBadgeClass(f.producto)}">${f.producto||"—"}</span></td>
+          <td>${proy_estadoBadge(f.estado)}</td>
+          <td style="color:var(--slate-500);font-size:0.82rem">${f.horaDisplay||"—"}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table>
+    </div>`;
+  document.getElementById("proy-preview-tabla").innerHTML = html;
+}
+
+// Pasar de vista previa al editor
+function proy_mostrarEditor() {
+  document.getElementById("proy-preview-view").style.display = "none";
+  document.getElementById("proy-asesor-view").style.display  = "block";
+}
+
+let _proy_datosAdmin = []; // cache para descarga
+
+function proy_renderAdmin(data, todosUsuarios = []) {
+  _proy_datosAdmin = data; // guardar para descarga
+  const wrap = document.getElementById("proy-admin-tabla");
+  const totalUnidades = data.reduce((sum, f) => sum + (parseInt(f.densidad) || 0), 0);
+  document.getElementById("proy-total-unidades").textContent = totalUnidades;
+
+  // Agrupar proyecciones por agente
+  const porAsesor = {};
+  data.forEach(f => {
+    const key = f.agente || f.usuario || "—";
+    if (!porAsesor[key]) porAsesor[key] = [];
+    porAsesor[key].push(f);
+  });
+
+  // Obtener lista de asesores del libro Usuarios (excluir admins)
+  const asesoresRegistrados = todosUsuarios
+    .filter(u => (u.rol||"").toLowerCase() !== "administrador")
+    .map(u => u.agente || u.usuario || "—");
+
+  // Unir: asesores que enviaron + asesores que no enviaron
+  const todosAsesores = [...new Set([
+    ...Object.keys(porAsesor),
+    ...asesoresRegistrados
+  ])];
+
+  let html = "";
+
+  // Primero los que SÍ enviaron
+  const enviaron    = todosAsesores.filter(a => porAsesor[a]);
+  const noEnviaron  = todosAsesores.filter(a => !porAsesor[a]);
+
+  if (enviaron.length === 0 && noEnviaron.length === 0) {
+    wrap.innerHTML = `<div class="empty-state" style="padding:3rem">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      <p>No hay proyecciones registradas para hoy.</p></div>`;
+    return;
+  }
+
+  // Sección de asesores que enviaron
+  enviaron.forEach(asesor => {
+    const filas = porAsesor[asesor];
+    const totalAsesor = filas.reduce((s, f) => s + (parseInt(f.densidad)||0), 0);
+    html += `<div class="proy-admin-asesor">
+      <div class="proy-admin-asesor-header">
+        <div class="proy-admin-avatar">${asesor.charAt(0).toUpperCase()}</div>
+        <span class="proy-admin-nombre">${asesor}</span>
+        <span class="proy-admin-badge enviado">✓ Enviado · ${totalAsesor} unidad${totalAsesor!==1?"es":""}</span>
+      </div>
+      <div style="overflow-x:auto">
+      <table class="data-table">
+        <thead><tr><th>Nombre</th><th>Densidad</th><th>Producto</th><th>Estado</th><th>Hora</th></tr></thead>
+        <tbody>
+          ${filas.map(f => `<tr>
+            <td style="font-weight:600">${f.nombre||"—"}</td>
+            <td style="text-align:center">${f.densidad||"—"}</td>
+            <td><span class="badge-product ${getBadgeClass(f.producto)}">${f.producto||"—"}</span></td>
+            <td>${proy_estadoBadge(f.estado)}</td>
+            <td style="white-space:nowrap;color:var(--slate-500);font-size:0.82rem">${f.horaDisplay||"—"}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+      </div>
+    </div>`;
+  });
+
+  // Sección de asesores que NO enviaron
+  if (noEnviaron.length > 0) {
+    html += `<div class="proy-pendientes-wrap">
+      <p class="proy-pendientes-title">⏳ Sin proyección hoy</p>
+      <div class="proy-pendientes-list">
+        ${noEnviaron.map(a => `
+        <div class="proy-pendiente-item">
+          <div class="proy-admin-avatar" style="background:var(--slate-200);color:var(--slate-500)">${a.charAt(0).toUpperCase()}</div>
+          <span class="proy-admin-nombre" style="color:var(--slate-500)">${a}</span>
+          <span class="proy-admin-badge pendiente">Sin enviar</span>
+        </div>`).join("")}
+      </div>
+    </div>`;
+  }
+
+  wrap.innerHTML = html;
+}
+
+function proy_estadoBadge(estado) {
+  const cfg = {
+    "Generado":   { bg:"#dbeafe", color:"#1d4ed8" },
+    "Por Vencer": { bg:"#fef9c3", color:"#92400e" },
+    "Pagado":     { bg:"#dcfce7", color:"#166534" },
+    "Pendiente":  { bg:"#fee2e2", color:"#b91c1c" },
+  };
+  const c = cfg[estado];
+  if (!c) return estado || "—";
+  return `<span style="display:inline-block;padding:3px 10px;border-radius:100px;font-size:0.75rem;font-weight:700;background:${c.bg};color:${c.color}">${estado}</span>`;
+}
+
+async function proy_guardar() {
+  const btn    = document.getElementById("proy-btn-save");
+  const text   = btn.querySelector(".btn-text");
+  const loader = btn.querySelector(".btn-loader");
+  btn.disabled = true; text.style.display="none"; loader.style.display="flex";
+
+  const filas = proy_leerFilas();
+  if (filas.length === 0) {
+    alert("Agrega al menos un prospecto con nombre antes de guardar.");
+    btn.disabled=false; text.style.display="inline"; loader.style.display="none";
+    return;
+  }
+
+  const sesion = leerSesion();
+  const payload = {
+    action:  "saveProyeccion",
+    agente:  sesion?.agente  || "",
+    usuario: sesion?.usuario || "",
+    fecha:   proy_fechaHoyLima(),
+    filas,
+  };
+
+  try {
+    await fetch(URL_GOOGLE_SCRIPT, {
+      method: "POST", mode: "no-cors",
+      body: JSON.stringify(payload),
+    });
+
+    // Toast
+    const toast = document.getElementById("toast");
+    if (toast) {
+      toast.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> ¡Proyección guardada!`;
+      toast.style.display = "flex";
+      setTimeout(() => { toast.style.display="none"; }, 3000);
+    }
+
+    // Pasar a vista previa con los datos recién guardados
+    document.getElementById("proy-asesor-view").style.display  = "none";
+    document.getElementById("proy-preview-view").style.display = "block";
+    proy_renderPreview(filas.map(f => ({ ...f, horaDisplay: f.horaDisplay || f.hora })));
+
+  } catch {
+    alert("Error al guardar la proyección. Intenta de nuevo.");
+  } finally {
+    btn.disabled=false; text.style.display="inline"; loader.style.display="none";
+  }
+}
+
+function proy_descargarExcel() {
+  const data = _proy_datosAdmin;
+  if (!data || data.length === 0) {
+    alert("No hay proyecciones del día para descargar.");
+    return;
+  }
+
+  const hoy = proy_fechaHoyLima();
+
+  try {
+    // Construir filas limpias (sin caracteres especiales que puedan fallar en XLSX)
+    const filas = data.map(f => ({
+      "Asesor":   String(f.agente || f.usuario || ""),
+      "Nombre":   String(f.nombre   || ""),
+      "Densidad": parseInt(f.densidad) || 0,
+      "Producto": String(f.producto || ""),
+      "Estado":   String(f.estado   || ""),
+      "Hora":     String(f.horaDisplay || ""),
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(filas, {
+      header: ["Asesor","Nombre","Densidad","Producto","Estado","Hora"]
+    });
+    ws["!cols"] = [
+      { wch: 18 }, // Asesor
+      { wch: 22 }, // Nombre
+      { wch: 10 }, // Densidad
+      { wch: 20 }, // Producto
+      { wch: 14 }, // Estado
+      { wch: 10 }, // Hora
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const sheetName = `Proyeccion ${hoy}`.replace(/\//g,"-").slice(0, 31);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+    // Forzar descarga con writeFile
+    XLSX.writeFile(wb, `Proyeccion_${hoy.replace(/\//g,"-")}.xlsx`);
+
+  } catch (err) {
+    console.error("Error al generar Excel:", err);
+    alert("Error al generar el archivo. Intenta de nuevo.");
+  }
+}
